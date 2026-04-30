@@ -23,6 +23,17 @@ scheduler = AsyncIOScheduler(timezone=IST)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── Create DB tables (idempotent — safe to run every startup) ────────────
+    from src.db import engine, Base
+    import src.products.models  # noqa: F401
+    import src.invoices.models  # noqa: F401
+    import src.sales.models     # noqa: F401
+    import src.stock.models     # noqa: F401
+    import src.payments.models  # noqa: F401
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables verified/created")
+
     # ── Scheduled reports ────────────────────────────────────────────────────
     from src.reports.service import send_daily_report, send_weekly_report
     scheduler.add_job(
