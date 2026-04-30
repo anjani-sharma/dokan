@@ -1,14 +1,23 @@
+import re
+import ssl
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from src.settings import settings
 
+# asyncpg doesn't accept sslmode/channel_binding in the URL — strip them and pass ssl directly
+_db_url = re.sub(r"[?&](sslmode|channel_binding)=[^&]*", "", settings.database_url)
+_db_url = _db_url.rstrip("?&")
+
+_ssl_ctx = ssl.create_default_context() if "neon.tech" in _db_url or "supabase" in _db_url else None
 
 engine = create_async_engine(
-    settings.database_url,
+    _db_url,
     echo=False,
-    poolclass=NullPool,  # Supabase pooler manages connections — don't double-pool
+    poolclass=NullPool,
+    connect_args={"ssl": _ssl_ctx} if _ssl_ctx else {},
 )
 
 AsyncSessionLocal = async_sessionmaker(
