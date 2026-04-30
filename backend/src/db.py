@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from src.settings import settings
 
@@ -7,10 +8,7 @@ from src.settings import settings
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_size=20,
-    max_overflow=0,
-    pool_pre_ping=True,
-    pool_recycle=3600,
+    poolclass=NullPool,  # Supabase pooler manages connections — don't double-pool
 )
 
 AsyncSessionLocal = async_sessionmaker(
