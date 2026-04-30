@@ -99,7 +99,7 @@ export default function Payments() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="mode" tick={{ fontSize: 12 }} />
                   <YAxis tickFormatter={v => `₹${v}`} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => fmt(v)} />
+                  <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                   <Bar dataKey="amount" fill="#10b981" name="Received" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -115,7 +115,7 @@ export default function Payments() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="mode" tick={{ fontSize: 12 }} />
                   <YAxis tickFormatter={v => `₹${v}`} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => fmt(v)} />
+                  <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                   <Bar dataKey="amount" fill="#ef4444" name="Paid Out" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

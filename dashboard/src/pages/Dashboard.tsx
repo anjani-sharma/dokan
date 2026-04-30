@@ -140,7 +140,7 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" />
                 <YAxis tickFormatter={v => `₹${v}`} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                 <Bar dataKey="revenue" fill="#4f46e5" name="Revenue" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -164,7 +164,7 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" />
                 <YAxis tickFormatter={v => `₹${v}`} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
+                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
                 <Bar dataKey="revenue" fill="#10b981" name="Revenue" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
