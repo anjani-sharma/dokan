@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     voice_language: str = "hi"   # whisper language hint: "hi" for Hindi, "en" for English
     images_dir: str = "/tmp/ananta_images"
 
+    # Cloudflare R2 (optional — falls back to local path if not set)
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = ""
+    r2_public_url: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
