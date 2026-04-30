@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -53,7 +54,11 @@ async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)
                 reference_type="purchase_invoice",
             )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Invoice {body.invoice_number} already exists")
     await db.refresh(invoice)
     result = await db.execute(
         select(PurchaseInvoice)

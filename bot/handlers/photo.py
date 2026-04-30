@@ -183,7 +183,8 @@ async def _save_document(query, data: dict, key: str) -> None:
 
 async def _save_invoice(data: dict) -> str:
     supplier_name  = data.get("supplier_name") or "Unknown Supplier"
-    invoice_number = data.get("invoice_number") or f"INV-{date.today().isoformat()}"
+    import uuid
+    invoice_number = data.get("invoice_number") or f"INV-{date.today().isoformat()}-{uuid.uuid4().hex[:6]}"
     invoice_date   = data.get("invoice_date")   or date.today().isoformat()
     total_amount   = data.get("total_amount")   or 0
     items_raw      = data.get("items", [])
