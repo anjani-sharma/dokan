@@ -1,12 +1,15 @@
 """Async HTTP client for the Ananta backend API, with a short-lived product cache."""
+import os
 import time
 
 import httpx
 
-from settings import settings
 from services.matcher import find_best_match, rank_matches
 
-BASE = settings.backend_url
+# When embedded in the backend (Render), use the same PORT the server is running on.
+# BACKEND_URL env var overrides (useful for external bot or local dev pointing elsewhere).
+_port = os.environ.get("PORT", "8000")
+BASE = os.environ.get("BACKEND_URL", f"http://localhost:{_port}")
 
 _product_cache: tuple[list[dict], float] | None = None
 _CACHE_TTL = 300  # seconds
