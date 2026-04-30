@@ -18,6 +18,7 @@ from telegram.ext import ContextTypes, CallbackQueryHandler
 
 from services.ocr import ocr_document
 from services.api_client import upsert_supplier, create_invoice, create_payment
+from services.storage import upload_image
 from settings import settings
 
 # pending confirmations: {callback_data_prefix: ocr_result_dict}
@@ -42,6 +43,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f"❌ Could not read the document: {e}")
         _safe_remove(local_path)
         return
+
+    # Upload to R2 (or keep local path) — stored with the invoice/payment record
+    prefix = "payments" if data.get("type") == "payment_slip" else "invoices"
+    data["_stored_url"] = upload_image(local_path, prefix=prefix)
 
     doc_type   = data.get("type", "unknown")
     confidence = data.get("confidence", "low")
@@ -200,6 +205,7 @@ async def _save_invoice(data: dict) -> str:
         "invoice_date":   invoice_date,
         "total_amount":   total_amount,
         "notes":          data.get("notes"),
+        "image_url":      data.get("_stored_url"),
         "items":          items_payload,
     })
 
@@ -227,6 +233,7 @@ async def _save_payment(data: dict) -> str:
         "payment_mode":    payment_mode,
         "direction":       "outflow",
         "transaction_ref": txn_ref,
+        "image_url":       data.get("_stored_url"),
         "note":            note,
     })
 

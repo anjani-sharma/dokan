@@ -1,33 +1,75 @@
 services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   db:
-    image: postgres:15
+    image: postgres:15-alpine
+    restart: always
     environment:
-      POSTGRES_USER: ananta
-      POSTGRES_PASSWORD: ananta
-      POSTGRES_DB: shopdb
-    ports:
-      - "5432:5432"
+      POSTGRES_USER:     ${POSTGRES_USER:-ananta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB:-shopdb}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ananta -d shopdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ananta} -d ${POSTGRES_DB:-shopdb}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
   backend:
-    build: ./backend
-    env_file: ./backend/.env
-    ports:
-      - "8000:8000"
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ananta}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-shopdb}
+    volumes:
+      - uploads:/app/images        # persistent invoice + payment slip photos
     depends_on:
       db:
         condition: service_healthy
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: bash start.sh
+
+  # ── Telegram bot ────────────────────────────────────────────────────────────
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:8000
+      IMAGES_DIR:  /app/images
     volumes:
-      - ./backend:/app
-      - invoice_images:/app/images
+      - uploads:/app/images        # same volume — bot downloads here, backend reads here
+    depends_on:
+      - backend
+
+  # ── Dashboard (React build served by nginx) ─────────────────────────────────
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: always
+
+  # ── nginx (reverse proxy + static files) ────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro    # SSL certs (Let's Encrypt)
+      - nginxlogs:/var/log/nginx
+    depends_on:
+      - backend
+      - dashboard
 
 volumes:
-  pgdata:
-  invoice_images:
+  pgdata:      # all database data — never lost
+  uploads:     # all invoice photos and payment slips — never lost
+  nginxlogs:
