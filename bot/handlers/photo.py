@@ -9,6 +9,7 @@ Flow:
   5. On ✏️ Edit → bot asks user to type a correction
   6. On ❌ Cancel → discarded
 """
+import asyncio
 import json
 import os
 from datetime import date
@@ -38,7 +39,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await tg_file.download_to_drive(local_path)
 
     try:
-        data = ocr_document(local_path)
+        data = await asyncio.to_thread(ocr_document, local_path)
     except Exception as e:
         await update.message.reply_text(f"❌ Could not read the document: {e}")
         _safe_remove(local_path)
@@ -46,7 +47,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # Upload to R2 (or keep local path) — stored with the invoice/payment record
     prefix = "payments" if data.get("type") == "payment_slip" else "invoices"
-    data["_stored_url"] = upload_image(local_path, prefix=prefix)
+    data["_image_path"] = await asyncio.to_thread(upload_image, local_path, prefix)
 
     doc_type   = data.get("type", "unknown")
     confidence = data.get("confidence", "low")
@@ -205,7 +206,7 @@ async def _save_invoice(data: dict) -> str:
         "invoice_date":   invoice_date,
         "total_amount":   total_amount,
         "notes":          data.get("notes"),
-        "image_url":      data.get("_stored_url"),
+        "image_path":     data.get("_image_path"),
         "items":          items_payload,
     })
 
@@ -233,7 +234,7 @@ async def _save_payment(data: dict) -> str:
         "payment_mode":    payment_mode,
         "direction":       "outflow",
         "transaction_ref": txn_ref,
-        "image_url":       data.get("_stored_url"),
+        "image_path":      data.get("_image_path"),
         "note":            note,
     })
 

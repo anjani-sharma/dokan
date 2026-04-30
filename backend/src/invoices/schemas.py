@@ -23,6 +23,7 @@ class InvoiceCreate(BaseModel):
     invoice_date: date
     total_amount: Decimal
     notes: str | None = None
+    image_path: str | None = None
     items: list[InvoiceItemCreate] = []
 
 

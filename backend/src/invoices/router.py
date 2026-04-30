@@ -35,6 +35,7 @@ async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)
         invoice_date=body.invoice_date,
         total_amount=body.total_amount,
         notes=body.notes,
+        image_path=body.image_path,
     )
     db.add(invoice)
     await db.flush()  # get invoice.id before adding items

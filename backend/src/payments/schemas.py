@@ -11,6 +11,7 @@ class PaymentCreate(BaseModel):
     direction: str     # inflow | outflow
     purchase_invoice_id: int | None = None
     transaction_ref: str | None = None
+    image_path: str | None = None
     note: str | None = None
 
 
