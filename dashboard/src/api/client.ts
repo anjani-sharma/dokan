@@ -114,10 +114,26 @@ export const fetchOutstanding = (): Promise<OutstandingData> =>
   api.get("/reports/outstanding").then(r => r.data);
 
 export const fetchProducts = (activeOnly = true): Promise<Product[]> =>
-  api.get("/products", { params: { active_only: activeOnly } }).then(r => r.data);
+  api.get("/products", { params: { active_only: activeOnly } }).then(r =>
+    r.data.map((p: Product) => ({
+      ...p,
+      cost_price:    toNum(p.cost_price),
+      selling_price: toNum(p.selling_price),
+      stock_qty:     toNum(p.stock_qty),
+      reorder_level: toNum(p.reorder_level),
+    }))
+  );
 
 export const fetchLowStock = (): Promise<Product[]> =>
-  api.get("/products/low-stock").then(r => r.data);
+  api.get("/products/low-stock").then(r =>
+    r.data.map((p: Product) => ({
+      ...p,
+      cost_price:    toNum(p.cost_price),
+      selling_price: toNum(p.selling_price),
+      stock_qty:     toNum(p.stock_qty),
+      reorder_level: toNum(p.reorder_level),
+    }))
+  );
 
 const toNum = (v: unknown) => Number(v ?? 0);
 
@@ -146,7 +162,9 @@ export const fetchPayments = (params?: {
   );
 
 export const fetchStockMovements = (productId?: number): Promise<StockMovement[]> =>
-  api.get("/stock/movements", { params: productId ? { product_id: productId } : {} }).then(r => r.data);
+  api.get("/stock/movements", { params: productId ? { product_id: productId } : {} }).then(r =>
+    r.data.map((m: StockMovement) => ({ ...m, qty_change: toNum(m.qty_change) }))
+  );
 
 export const triggerDailyReport = (): Promise<void> =>
   api.post("/reports/trigger/daily").then(() => undefined);

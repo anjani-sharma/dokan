@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import StatusBadge from "../components/StatusBadge";
 import { fetchInvoices, fmt, Invoice } from "../api/client";
 
@@ -56,8 +56,8 @@ export default function Invoices() {
             </thead>
             <tbody>
               {invoices.map(inv => (
-                <>
-                  <tr key={inv.id} className="clickable-row" onClick={() => toggle(inv.id)}>
+                <Fragment key={inv.id}>
+                  <tr className="clickable-row" onClick={() => toggle(inv.id)}>
                     <td><strong>#{inv.invoice_number}</strong></td>
                     <td>{inv.invoice_date}</td>
                     <td>{fmt(inv.total_amount)}</td>
@@ -69,7 +69,7 @@ export default function Invoices() {
                     <td className="expand-icon">{expanded === inv.id ? "▲" : "▼"}</td>
                   </tr>
                   {expanded === inv.id && (
-                    <tr key={`${inv.id}-detail`} className="detail-row">
+                    <tr className="detail-row">
                       <td colSpan={7}>
                         <div className="detail-panel">
                           {inv.notes && <p className="detail-notes">Notes: {inv.notes}</p>}
@@ -101,7 +101,7 @@ export default function Invoices() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
