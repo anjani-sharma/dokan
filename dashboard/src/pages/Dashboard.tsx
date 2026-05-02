@@ -95,18 +95,30 @@ export default function Dashboard() {
         <KpiCard
           label="Today's Sales"
           value={fmt(daily?.total_sales ?? 0)}
-          sub={`${daily?.sales_count ?? 0} items sold`}
+          sub={`${daily?.sales_count ?? 0} items sold · ${daily?.date ?? ""}`}
           accent="blue"
         />
         <KpiCard
-          label="Payments Received"
+          label="Today's Received"
           value={fmt(daily?.received ?? 0)}
           accent="green"
         />
         <KpiCard
-          label="Payments Made"
+          label="Today's Paid Out"
           value={fmt(daily?.paid_out ?? 0)}
           accent="red"
+        />
+        <KpiCard
+          label="This Week Paid Out"
+          value={fmt(weekly?.paid_out ?? 0)}
+          sub="all payments this week"
+          accent="red"
+        />
+        <KpiCard
+          label="This Week Received"
+          value={fmt(weekly?.received ?? 0)}
+          sub="all inflows this week"
+          accent="green"
         />
         <KpiCard
           label="Outstanding Payables"

@@ -119,8 +119,22 @@ export const fetchProducts = (activeOnly = true): Promise<Product[]> =>
 export const fetchLowStock = (): Promise<Product[]> =>
   api.get("/products/low-stock").then(r => r.data);
 
+const toNum = (v: unknown) => Number(v ?? 0);
+
 export const fetchInvoices = (status?: string): Promise<Invoice[]> =>
-  api.get("/invoices", { params: status ? { status } : {} }).then(r => r.data);
+  api.get("/invoices", { params: status ? { status } : {} }).then(r =>
+    r.data.map((inv: Invoice) => ({
+      ...inv,
+      total_amount: toNum(inv.total_amount),
+      paid_amount:  toNum(inv.paid_amount),
+      items: inv.items.map((item: InvoiceItem) => ({
+        ...item,
+        qty:       toNum(item.qty),
+        unit_cost: toNum(item.unit_cost),
+        line_total: toNum(item.qty) * toNum(item.unit_cost),
+      })),
+    }))
+  );
 
 export const fetchPayments = (params?: {
   direction?: string;
