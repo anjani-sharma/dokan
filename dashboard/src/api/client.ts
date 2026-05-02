@@ -127,7 +127,9 @@ export const fetchPayments = (params?: {
   payment_mode?: string;
   payment_date?: string;
 }): Promise<Payment[]> =>
-  api.get("/payments", { params }).then(r => r.data);
+  api.get("/payments", { params }).then(r =>
+    r.data.map((p: Payment) => ({ ...p, amount: Number(p.amount) }))
+  );
 
 export const fetchStockMovements = (productId?: number): Promise<StockMovement[]> =>
   api.get("/stock/movements", { params: productId ? { product_id: productId } : {} }).then(r => r.data);
