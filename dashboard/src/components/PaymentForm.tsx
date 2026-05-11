@@ -21,20 +21,26 @@ interface PaymentFormProps {
   onSaved: () => void;
   onCancel: () => void;
   defaultDirection?: "inflow" | "outflow";
+  defaults?: {
+    amount?: number | null;
+    payment_mode?: string | null;
+    vendor_name?: string | null;
+    customer_name?: string | null;
+  };
 }
 
-export default function PaymentForm({ onSaved, onCancel, defaultDirection }: PaymentFormProps) {
+export default function PaymentForm({ onSaved, onCancel, defaultDirection, defaults }: PaymentFormProps) {
   const toast = useToast();
   const [direction, setDirection] = useState<"inflow" | "outflow">(defaultDirection ?? "outflow");
   const [date, setDate] = useState(today());
-  const [amount, setAmount] = useState("");
-  const [mode, setMode] = useState("gpay");
+  const [amount, setAmount] = useState(defaults?.amount != null ? String(defaults.amount) : "");
+  const [mode, setMode] = useState(defaults?.payment_mode ?? "gpay");
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
   const [supplier, setSupplier] = useState<{ supplier_id: number | null; supplier_name: string }>({
-    supplier_id: null, supplier_name: "",
+    supplier_id: null, supplier_name: defaults?.vendor_name ?? "",
   });
   const [customer, setCustomer] = useState<{ customer_id: number | null; customer_name: string }>({
-    customer_id: null, customer_name: "",
+    customer_id: null, customer_name: defaults?.customer_name ?? "",
   });
   const [ref, setRef] = useState("");
   const [note, setNote] = useState("");

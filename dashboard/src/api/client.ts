@@ -613,6 +613,40 @@ export const ocrInvoiceUpload = (file: File): Promise<OcrInvoiceResult> => {
   }).then(r => r.data);
 };
 
+// ── Voice ──────────────────────────────────────────────────────────────────
+
+export interface VoiceSaleFields {
+  product_name: string | null;
+  qty: number | null;
+  unit: string | null;
+  selling_price: number | null;
+  customer_name: string | null;
+}
+
+export interface VoicePaymentFields {
+  amount: number | null;
+  payment_mode: "cash" | "gpay" | "upi" | "bank_deposit" | "other" | null;
+  vendor_name: string | null;
+  customer_name: string | null;
+}
+
+export interface VoiceProcessResult {
+  transcript: string;
+  intent: "sale" | "payment_in" | "payment_out" | "unknown";
+  confidence: "high" | "medium" | "low";
+  sale: VoiceSaleFields | null;
+  payment: VoicePaymentFields | null;
+  note?: string;
+}
+
+export const processVoice = (blob: Blob, ext = "webm"): Promise<VoiceProcessResult> => {
+  const fd = new FormData();
+  fd.append("file", blob, `voice.${ext}`);
+  return api.post("/voice/process", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+};
+
 // ── Customers ──────────────────────────────────────────────────────────────
 
 export const fetchCustomers = (q?: string): Promise<CustomerSummary[]> =>

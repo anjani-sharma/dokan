@@ -17,6 +17,7 @@ from src.reports.router import router as reports_router
 from src.bot.router import router as bot_router
 from src.auth.router import router as auth_router
 from src.customers.router import router as customers_router
+from src.voice.router import router as voice_router
 
 logger = logging.getLogger(__name__)
 IST = pytz.timezone(settings.timezone)
@@ -85,6 +86,7 @@ app.include_router(payments_router,  prefix="/payments",  tags=["payments"])
 app.include_router(stock_router,     prefix="/stock",     tags=["stock"])
 app.include_router(reports_router,   prefix="/reports",   tags=["reports"])
 app.include_router(bot_router,       prefix="/bot",       tags=["bot"])
+app.include_router(voice_router,     prefix="/voice",     tags=["voice"])
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

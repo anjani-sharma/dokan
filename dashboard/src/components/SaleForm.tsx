@@ -12,19 +12,25 @@ interface SaleFormProps {
   onSaved: () => void;
   onCancel: () => void;
   defaultDate?: string;
+  defaults?: {
+    product_name?: string | null;
+    qty?: number | null;
+    selling_price?: number | null;
+    customer_name?: string | null;
+  };
 }
 
-export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormProps) {
+export default function SaleForm({ onSaved, onCancel, defaultDate, defaults }: SaleFormProps) {
   const toast = useToast();
   const [date, setDate] = useState(defaultDate ?? today());
   const [product, setProduct] = useState<{ product_id: number | null; product_name: string }>({
-    product_id: null, product_name: "",
+    product_id: null, product_name: defaults?.product_name ?? "",
   });
   const [customer, setCustomer] = useState<{ customer_id: number | null; customer_name: string }>({
-    customer_id: null, customer_name: "",
+    customer_id: null, customer_name: defaults?.customer_name ?? "",
   });
-  const [qty, setQty] = useState("");
-  const [price, setPrice] = useState("");
+  const [qty, setQty] = useState(defaults?.qty != null ? String(defaults.qty) : "");
+  const [price, setPrice] = useState(defaults?.selling_price != null ? String(defaults.selling_price) : "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
