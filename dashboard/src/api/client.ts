@@ -409,6 +409,21 @@ export interface AnalyticsLowStock {
   unit: string | null;
 }
 
+export interface CashDrawer {
+  cash: number;
+  upi: number;
+  card: number;
+  other: number;
+  count: number;
+}
+
+export interface ActivityEvent {
+  kind: "sale" | "payment";
+  date: string;
+  title: string;
+  amount: number;
+}
+
 export interface AnalyticsPayload {
   sales_trend_30d: AnalyticsTrendPoint[];
   sales_by_product_30d: AnalyticsTopProduct[];
@@ -421,6 +436,8 @@ export interface AnalyticsPayload {
     week: AnalyticsKpi;
     month: AnalyticsKpi;
   };
+  cash_drawer: CashDrawer;
+  recent_activity: ActivityEvent[];
 }
 
 const coerceKpi = (k: AnalyticsKpi): AnalyticsKpi => ({
@@ -451,6 +468,14 @@ export const fetchAnalytics = (): Promise<AnalyticsPayload> =>
         week:  coerceKpi(d.kpis.week),
         month: coerceKpi(d.kpis.month),
       },
+      cash_drawer: {
+        cash:  toNum(d.cash_drawer.cash),
+        upi:   toNum(d.cash_drawer.upi),
+        card:  toNum(d.cash_drawer.card),
+        other: toNum(d.cash_drawer.other),
+        count: d.cash_drawer.count,
+      },
+      recent_activity: d.recent_activity.map((e) => ({ ...e, amount: toNum(e.amount) })),
     };
   });
 

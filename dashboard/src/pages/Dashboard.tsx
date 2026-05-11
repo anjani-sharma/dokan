@@ -1,41 +1,30 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Bar, BarChart, CartesianGrid, Line, LineChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import KpiCard from "../components/KpiCard";
+import { AnalyticsPayload, fetchAnalytics, fmt } from "../api/client";
 import {
-  AnalyticsKpi, AnalyticsPayload,
-  fetchAnalytics, fmt, triggerDailyReport, triggerWeeklyReport,
-} from "../api/client";
-import { useToast } from "../hooks/useToast";
+  IconAlert, IconCalendar, IconCart, IconCash, IconCreditCard,
+  IconFile, IconPhone, IconTrend, IconUsers,
+} from "../components/Icons";
+
+const TODAY_HEADER = () => {
+  const d = new Date();
+  return d.toLocaleDateString("en-IN", {
+    weekday: "long", month: "long", day: "numeric", year: "numeric",
+  });
+};
 
 export default function Dashboard() {
-  const toast = useToast();
   const [data, setData] = useState<AnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState<"daily" | "weekly" | null>(null);
 
-  useEffect(() => {
-    fetchAnalytics().then(setData).finally(() => setLoading(false));
-  }, []);
+  const load = () => fetchAnalytics().then(setData).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
 
-  const handleSend = async (kind: "daily" | "weekly") => {
-    setSending(kind);
-    try {
-      kind === "daily" ? await triggerDailyReport() : await triggerWeeklyReport();
-      toast.push({ kind: "success", title: `${kind === "daily" ? "Daily" : "Weekly"} report sent`, body: "Telegram delivered." });
-    } catch {
-      toast.push({ kind: "error", title: "Send failed", body: "Check backend connection." });
-    } finally {
-      setSending(null);
-    }
-  };
+  if (loading || !data) return <div className="page-loading">Loading…</div>;
 
-  if (loading || !data) return <div className="page-loading">Loading dashboard…</div>;
-
-  // Build short labels for trend chart (day-of-month, every 5 days)
   const trendData = data.sales_trend_30d.map((t, i) => ({
     date: t.date,
     label: i % 5 === 0 || i === data.sales_trend_30d.length - 1
@@ -44,125 +33,134 @@ export default function Dashboard() {
     sales: t.total,
   }));
 
-  const topProducts = data.sales_by_product_30d.map((p) => ({
-    ...p,
-    short: p.name.length > 16 ? p.name.slice(0, 16) + "…" : p.name,
-  }));
+  const cashTotal = data.cash_drawer.cash + data.cash_drawer.upi + data.cash_drawer.card + data.cash_drawer.other;
+  const customersOwedTotal = data.customers_outstanding.reduce((s, c) => s + c.balance, 0);
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Overview</h1>
-          <div className="page-subtitle">Your shop at a glance — last 30 days.</div>
-        </div>
-        <div className="header-actions">
-          <button className="btn btn-ghost btn-sm" onClick={() => handleSend("daily")} disabled={sending !== null}>
-            {sending === "daily" ? "Sending…" : "📤 Daily report"}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => handleSend("weekly")} disabled={sending !== null}>
-            {sending === "weekly" ? "Sending…" : "📤 Weekly report"}
-          </button>
+          <h1>Dashboard</h1>
+          <div className="page-subtitle">{TODAY_HEADER()}</div>
         </div>
       </div>
 
-      {/* KPI strip — today / week / month */}
-      <KpiBlock label="Today"     kpi={data.kpis.today} />
-      <KpiBlock label="This week" kpi={data.kpis.week} />
-      <KpiBlock label="Last 30 days" kpi={data.kpis.month} extra={
-        <KpiCard
-          label="Stock value on hand"
-          value={fmt(data.stock_value_on_hand)}
-          sub="cost basis"
-          accent="blue"
-        />
-      } />
+      {/* ── KPI strip ───────────────────────────────────────────────── */}
+      <div className="kpi-grid kpi-grid-4">
+        <div className="kpi-card">
+          <div className="kpi-icon kpi-icon-brand"><IconCart /></div>
+          <div className="kpi-label">Today's Sales</div>
+          <div className="kpi-value">{fmt(data.kpis.today.sales)}</div>
+          <div className="kpi-sub">today</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon kpi-icon-green"><IconTrend /></div>
+          <div className="kpi-label">Month Sales</div>
+          <div className="kpi-value">{fmt(data.kpis.month.sales)}</div>
+          <div className="kpi-sub">last 30 days</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon kpi-icon-orange"><IconCalendar /></div>
+          <div className="kpi-label">Outstanding</div>
+          <div className="kpi-value">{fmt(customersOwedTotal)}</div>
+          <div className="kpi-sub">Customer balances owed</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon kpi-icon-red"><IconAlert /></div>
+          <div className="kpi-label">Low Stock</div>
+          <div className="kpi-value">{data.low_stock.length}</div>
+          <div className="kpi-sub">products to restock</div>
+        </div>
+      </div>
 
-      {/* Sales trend (30 days) */}
-      <div className="chart-card">
-        <h2>Sales — last 30 days</h2>
-        {trendData.every((d) => d.sales === 0) ? (
-          <div className="empty-state">No sales in the last 30 days.</div>
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={trendData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+      {/* ── Trend + Outstanding ─────────────────────────────────────── */}
+      <div className="charts-grid charts-grid-2">
+        <div className="chart-card">
+          <h2>Sales — Last 30 Days</h2>
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} />
-              <YAxis tickFormatter={(v) => fmt(Number(v ?? 0))} tick={{ fontSize: 11 }} width={80} />
+              <YAxis tickFormatter={(v) => `₹${v}`} tick={{ fontSize: 11 }} width={60} />
               <Tooltip
                 formatter={(v) => fmt(Number(v ?? 0))}
                 labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ""}
               />
-              <Line type="monotone" dataKey="sales" stroke="#4f46e5" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="sales" stroke="var(--brand)" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Top products + outstanding lists */}
-      <div className="charts-grid charts-grid-2">
-        <div className="chart-card">
-          <h2>Top products — last 30 days</h2>
-          {topProducts.length === 0 ? (
-            <div className="empty-state">No sales yet.</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart
-                layout="vertical"
-                data={topProducts}
-                margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tickFormatter={(v) => `₹${v}`} tick={{ fontSize: 11 }} />
-                <YAxis dataKey="short" type="category" width={130} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => fmt(Number(v ?? 0))} />
-                <Bar dataKey="revenue" fill="#4f46e5" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
         </div>
 
-        <PartyList
-          title="Customers who owe you"
-          empty="No customer dues — nice."
-          rows={data.customers_outstanding}
-          linkBase="/customers"
-          variant="red"
-        />
+        <div className="chart-card">
+          <h2>Top Outstanding Balances</h2>
+          {data.customers_outstanding.length === 0 ? (
+            <div className="empty-state">No outstanding balances</div>
+          ) : (
+            <div className="activity-list">
+              {data.customers_outstanding.slice(0, 5).map((c) => (
+                <Link
+                  key={c.id} to="/customers"
+                  className="activity-row" style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  <div className="activity-icon kpi-icon-orange"><IconUsers size={14} /></div>
+                  <div className="activity-body">
+                    <div className="activity-title">{c.name}</div>
+                    {c.phone && <div className="activity-sub"><IconPhone size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{c.phone}</div>}
+                  </div>
+                  <div className="activity-amount text-red">{fmt(c.balance)}</div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* ── Cash drawer + Recent activity ───────────────────────────── */}
       <div className="charts-grid charts-grid-2">
-        <PartyList
-          title="Suppliers you owe"
-          empty="All caught up with suppliers."
-          rows={data.suppliers_outstanding}
-          linkBase="/suppliers"
-          variant="orange"
-        />
+        <div className="chart-card">
+          <div className="card-head">
+            <div className="card-title">
+              <IconCash className="icon" /> Today's Cash Drawer
+            </div>
+            <div className="card-meta">{data.cash_drawer.count} transactions</div>
+          </div>
+          <div className="cash-drawer">
+            <CashRow kind="cash"   label="Cash"   amount={data.cash_drawer.cash}  icon={<IconCash size={14} />} />
+            <CashRow kind="upi"    label="UPI"    amount={data.cash_drawer.upi}   icon={<IconPhone size={14} />} />
+            <CashRow kind="card"   label="Card"   amount={data.cash_drawer.card}  icon={<IconCreditCard size={14} />} />
+            <CashRow kind="credit" label="Credit" amount={data.cash_drawer.other} icon={<IconUsers size={14} />} />
+            <div className="cash-total">
+              <span>Total</span>
+              <span>{fmt(cashTotal)}</span>
+            </div>
+          </div>
+        </div>
 
         <div className="chart-card">
-          <h2>Low stock</h2>
-          {data.low_stock.length === 0 ? (
-            <div className="empty-state">All products above reorder level.</div>
+          <div className="card-head">
+            <div className="card-title">
+              <IconFile className="icon" /> Recent Activity
+            </div>
+          </div>
+          {data.recent_activity.length === 0 ? (
+            <div className="empty-state">No recent activity</div>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>On hand</th>
-                  <th>Reorder at</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.low_stock.slice(0, 10).map((p) => (
-                  <tr key={p.id} className="row-warning">
-                    <td><strong>{p.name}</strong></td>
-                    <td className="text-red bold">{p.stock_qty} {p.unit ?? ""}</td>
-                    <td className="text-muted">{p.reorder_level} {p.unit ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="activity-list">
+              {data.recent_activity.map((e, i) => (
+                <div key={i} className="activity-row">
+                  <div className={"activity-icon " + (e.kind === "sale" ? "kpi-icon-brand" : "kpi-icon-green")}>
+                    {e.kind === "sale" ? <IconCart size={14} /> : <IconCash size={14} />}
+                  </div>
+                  <div className="activity-body">
+                    <div className="activity-title">{e.title}</div>
+                    <div className="activity-sub">{formatActivityDate(e.date)}</div>
+                  </div>
+                  <div className={"activity-amount " + (e.kind === "sale" ? "text-brand" : "text-green")}>
+                    {fmt(e.amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -170,68 +168,28 @@ export default function Dashboard() {
   );
 }
 
-// ── KPI strip per window ──────────────────────────────────────────────────
-
-function KpiBlock({ label, kpi, extra }: { label: string; kpi: AnalyticsKpi; extra?: React.ReactNode }) {
-  return (
-    <div>
-      <div className="kpi-block-label">{label}</div>
-      <div className="kpi-grid">
-        <KpiCard label="Sales"    value={fmt(kpi.sales)}    accent="indigo" />
-        <KpiCard label="Received" value={fmt(kpi.received)} accent="green" />
-        <KpiCard label="Paid out" value={fmt(kpi.paid_out)} accent="red" />
-        <KpiCard
-          label="Net cash"
-          value={fmt(kpi.net)}
-          accent={kpi.net >= 0 ? "green" : "orange"}
-        />
-        {extra}
-      </div>
-    </div>
-  );
-}
-
-// ── Outstanding list (customers / suppliers) ──────────────────────────────
-
-function PartyList({
-  title, empty, rows, linkBase, variant,
+function CashRow({
+  kind, label, amount, icon,
 }: {
-  title: string;
-  empty: string;
-  rows: { id: number; name: string; phone: string | null; balance: number; last_activity: string | null }[];
-  linkBase: string;
-  variant: "red" | "orange";
+  kind: "cash" | "upi" | "card" | "credit";
+  label: string;
+  amount: number;
+  icon: React.ReactNode;
 }) {
   return (
-    <div className="chart-card">
-      <h2>{title}</h2>
-      {rows.length === 0 ? (
-        <div className="empty-state">{empty}</div>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Last activity</th>
-              <th style={{ textAlign: "right" }}>Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="clickable-row">
-                <td>
-                  <Link to={linkBase} style={{ color: "inherit", textDecoration: "none" }}>
-                    <strong>{r.name}</strong>
-                    {r.phone && <span className="text-muted" style={{ marginLeft: 8, fontSize: 11 }}>{r.phone}</span>}
-                  </Link>
-                </td>
-                <td className="text-muted">{r.last_activity ?? "—"}</td>
-                <td className={`text-${variant} bold`} style={{ textAlign: "right" }}>{fmt(r.balance)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+    <div className={"cash-row " + kind}>
+      <div className="label-side">
+        <span className="icon-wrap">{icon}</span>
+        {label}
+      </div>
+      <span className="amount">{fmt(amount)}</span>
     </div>
   );
+}
+
+function formatActivityDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("en-IN", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
 }

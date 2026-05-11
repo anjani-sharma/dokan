@@ -266,6 +266,51 @@ async def analytics(db: AsyncSession = Depends(get_db)):
     suppliers_outstanding.sort(key=lambda x: x["balance"], reverse=True)
     suppliers_outstanding = suppliers_outstanding[:10]
 
+    # ── Today's cash drawer (inflows by mode) ───────────────────────────────
+    cash_rows = (await db.execute(
+        select(Payment.payment_mode, func.coalesce(func.sum(Payment.amount), 0))
+        .where(Payment.payment_date == today, Payment.direction == "inflow")
+        .group_by(Payment.payment_mode)
+    )).all()
+    by_mode = {row[0]: float(row[1]) for row in cash_rows}
+    cash_drawer = {
+        "cash":   by_mode.get("cash", 0.0),
+        "upi":    by_mode.get("upi", 0.0) + by_mode.get("gpay", 0.0),
+        "card":   by_mode.get("bank_deposit", 0.0),
+        "other":  by_mode.get("other", 0.0),
+        "count":  int((await db.execute(
+            select(func.count(Payment.id))
+            .where(Payment.payment_date == today, Payment.direction == "inflow")
+        )).scalar() or 0),
+    }
+
+    # ── Recent activity (last 10 events — sales + inflow payments) ──────────
+    recent_sales = (await db.execute(
+        select(DailySale).order_by(DailySale.created_at.desc()).limit(10)
+    )).scalars().all()
+    recent_payments = (await db.execute(
+        select(Payment)
+        .where(Payment.direction == "inflow")
+        .order_by(Payment.created_at.desc()).limit(10)
+    )).scalars().all()
+    events: list[dict] = []
+    for s in recent_sales:
+        events.append({
+            "kind": "sale",
+            "date": s.created_at.isoformat() if s.created_at else s.sale_date.isoformat(),
+            "title": f"Sale of {s.product_name_raw or 'item'}" + (" — Walk-in" if not s.customer_id else ""),
+            "amount": float((s.qty_sold or 0) * (s.selling_price or 0)),
+        })
+    for p in recent_payments:
+        events.append({
+            "kind": "payment",
+            "date": p.created_at.isoformat() if p.created_at else p.payment_date.isoformat(),
+            "title": f"Payment received · {p.payment_mode}" + (f" · ref {p.transaction_ref}" if p.transaction_ref else ""),
+            "amount": float(p.amount or 0),
+        })
+    events.sort(key=lambda e: e["date"], reverse=True)
+    recent_activity = events[:10]
+
     # ── KPIs (today / week / month) ─────────────────────────────────────────
     async def _kpi_window(start: date, end: date) -> dict:
         sales = float((await db.execute(
@@ -298,6 +343,8 @@ async def analytics(db: AsyncSession = Depends(get_db)):
         "customers_outstanding": customers_outstanding,
         "suppliers_outstanding": suppliers_outstanding,
         "kpis":                  kpis,
+        "cash_drawer":           cash_drawer,
+        "recent_activity":       recent_activity,
     }
 
 
