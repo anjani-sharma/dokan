@@ -34,8 +34,16 @@ async def create_payment(body: PaymentCreate, db: AsyncSession = Depends(get_db)
     payment = Payment(**body.model_dump())
     db.add(payment)
 
-    # Update invoice paid_amount + status if linked
-    if body.purchase_invoice_id and body.direction == "outflow":
+    # Legacy: if the user explicitly tied the payment to one invoice (and
+    # not a supplier), still bump that invoice's paid_amount so the per-
+    # invoice "paid" badge stays meaningful. New supplier-level payments
+    # leave individual invoices alone — the supplier ledger is the source
+    # of truth for "what we owe".
+    if (
+        body.direction == "outflow"
+        and body.purchase_invoice_id
+        and not body.supplier_id
+    ):
         from src.invoices.models import PurchaseInvoice
         invoice = await db.get(PurchaseInvoice, body.purchase_invoice_id)
         if invoice:

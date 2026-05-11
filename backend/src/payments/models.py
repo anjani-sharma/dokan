@@ -16,6 +16,11 @@ class Payment(Base):
     payment_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     direction: Mapped[str] = mapped_column(String(10), nullable=False)
     purchase_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_invoices.id"))
+    # Outflows are normally booked against the supplier (one payment can cover
+    # multiple invoices, multiple payments can settle one invoice). The
+    # invoice link above is kept optional for cases where the user wants to
+    # tie a specific bill.
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), index=True)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), index=True)
     transaction_ref: Mapped[str | None] = mapped_column(String(100))
     image_path: Mapped[str | None] = mapped_column(Text)

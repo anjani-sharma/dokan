@@ -118,24 +118,28 @@ def compute_supplier_ledger(
     )
 
 
+async def _supplier_payments(db: AsyncSession, supplier_id: int, invoice_ids: list[int]) -> list[Payment]:
+    """All outflow payments tied to a supplier, by either supplier_id or
+    via an invoice belonging to that supplier."""
+    conditions = [Payment.supplier_id == supplier_id]
+    if invoice_ids:
+        conditions.append(Payment.purchase_invoice_id.in_(invoice_ids))
+    from sqlalchemy import or_
+    res = await db.execute(
+        select(Payment)
+        .where(Payment.direction == "outflow", or_(*conditions))
+        .order_by(Payment.payment_date, Payment.id)
+    )
+    return list(res.scalars().all())
+
+
 async def build_supplier_ledger(db: AsyncSession, supplier: Supplier) -> SupplierLedger:
     invoices_res = await db.execute(
         select(PurchaseInvoice).where(PurchaseInvoice.supplier_id == supplier.id)
         .order_by(PurchaseInvoice.invoice_date, PurchaseInvoice.id)
     )
     invoices = list(invoices_res.scalars().all())
-    invoice_ids = [inv.id for inv in invoices]
-
-    if invoice_ids:
-        payments_res = await db.execute(
-            select(Payment)
-            .where(Payment.purchase_invoice_id.in_(invoice_ids), Payment.direction == "outflow")
-            .order_by(Payment.payment_date, Payment.id)
-        )
-        payments = list(payments_res.scalars().all())
-    else:
-        payments = []
-
+    payments = await _supplier_payments(db, supplier.id, [inv.id for inv in invoices])
     return compute_supplier_ledger(supplier, invoices, payments)
 
 
@@ -145,16 +149,18 @@ async def summarise_supplier(db: AsyncSession, supplier: Supplier) -> SupplierSu
         select(PurchaseInvoice).where(PurchaseInvoice.supplier_id == supplier.id)
     )
     invoices = list(invoices_res.scalars().all())
+    payments = await _supplier_payments(db, supplier.id, [inv.id for inv in invoices])
 
-    total_invoiced = Decimal("0")
-    total_paid = Decimal("0")
+    total_invoiced = sum((inv.total_amount or Decimal("0") for inv in invoices), Decimal("0"))
+    total_paid = sum((p.amount or Decimal("0") for p in payments), Decimal("0"))
+
     last_activity: date | None = None
-
     for inv in invoices:
-        total_invoiced += inv.total_amount or Decimal("0")
-        total_paid += inv.paid_amount or Decimal("0")
         if last_activity is None or inv.invoice_date > last_activity:
             last_activity = inv.invoice_date
+    for p in payments:
+        if last_activity is None or p.payment_date > last_activity:
+            last_activity = p.payment_date
 
     return SupplierSummary(
         id=supplier.id,

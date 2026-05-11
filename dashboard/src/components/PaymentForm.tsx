@@ -5,6 +5,7 @@ import {
 import { useToast } from "../hooks/useToast";
 import CustomerPicker from "./CustomerPicker";
 import FormField from "./FormField";
+import SupplierPicker from "./SupplierPicker";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -29,6 +30,9 @@ export default function PaymentForm({ onSaved, onCancel, defaultDirection }: Pay
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("gpay");
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
+  const [supplier, setSupplier] = useState<{ supplier_id: number | null; supplier_name: string }>({
+    supplier_id: null, supplier_name: "",
+  });
   const [customer, setCustomer] = useState<{ customer_id: number | null; customer_name: string }>({
     customer_id: null, customer_name: "",
   });
@@ -118,6 +122,7 @@ export default function PaymentForm({ onSaved, onCancel, defaultDirection }: Pay
       payment_mode: mode,
       direction,
       purchase_invoice_id: direction === "outflow" ? invoiceId : null,
+      supplier_id: direction === "outflow" ? supplier.supplier_id : null,
       customer_id: direction === "inflow" ? customer.customer_id : null,
       transaction_ref: ref.trim() || null,
       image_path: imagePath,
@@ -206,23 +211,32 @@ export default function PaymentForm({ onSaved, onCancel, defaultDirection }: Pay
       </FormField>
 
       {direction === "outflow" && (
-        <FormField label="Against invoice" hint="optional — updates the invoice's paid status">
-          <select
-            className="form-select"
-            value={invoiceId ?? ""}
-            onChange={(e) => setInvoiceId(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">— None —</option>
-            {openInvoices.map((inv) => {
-              const outstanding = inv.total_amount - inv.paid_amount;
-              return (
-                <option key={inv.id} value={inv.id}>
-                  #{inv.invoice_number} · {inv.invoice_date} · outstanding ₹{outstanding.toFixed(2)}
-                </option>
-              );
-            })}
-          </select>
-        </FormField>
+        <>
+          <FormField label="To vendor" hint="payment is booked against the vendor's running balance">
+            <SupplierPicker value={supplier} onChange={setSupplier} />
+          </FormField>
+          {supplier.supplier_id != null && openInvoices.some((i) => i.supplier_id === supplier.supplier_id) && (
+            <FormField label="Specific invoice" hint="optional — only set if this payment is for one bill">
+              <select
+                className="form-select"
+                value={invoiceId ?? ""}
+                onChange={(e) => setInvoiceId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">— Apply to vendor balance —</option>
+                {openInvoices
+                  .filter((i) => i.supplier_id === supplier.supplier_id)
+                  .map((inv) => {
+                    const outstanding = inv.total_amount - inv.paid_amount;
+                    return (
+                      <option key={inv.id} value={inv.id}>
+                        #{inv.invoice_number} · {inv.invoice_date} · outstanding ₹{outstanding.toFixed(2)}
+                      </option>
+                    );
+                  })}
+              </select>
+            </FormField>
+          )}
+        </>
       )}
 
       {direction === "inflow" && (

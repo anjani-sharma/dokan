@@ -319,6 +319,7 @@ export interface PaymentCreate {
   payment_mode: string;
   direction: "inflow" | "outflow";
   purchase_invoice_id: number | null;
+  supplier_id?: number | null;
   customer_id?: number | null;
   transaction_ref: string | null;
   image_path: string | null;
