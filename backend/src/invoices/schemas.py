@@ -28,6 +28,10 @@ class InvoiceCreate(BaseModel):
 
 
 class InvoiceUpdate(BaseModel):
+    invoice_number: str | None = None
+    supplier_id: int | None = None
+    invoice_date: date | None = None
+    total_amount: Decimal | None = None
     paid_amount: Decimal | None = None
     status: str | None = None
     notes: str | None = None

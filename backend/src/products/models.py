@@ -25,6 +25,9 @@ class Product(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sku: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    # Optional UPC/EAN scanned at the till. Nullable because most legacy
+    # products have no barcode and we don't want to block creation.
+    barcode: Mapped[str | None] = mapped_column(String(64), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     unit: Mapped[str | None] = mapped_column(String(50))
     cost_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))

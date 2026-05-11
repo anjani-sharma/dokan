@@ -11,10 +11,12 @@ from sqlalchemy.orm import selectinload
 
 from src.dependencies import get_db, require_token
 from src.invoices.models import PurchaseInvoice, PurchaseInvoiceItem
-from src.invoices.schemas import InvoiceCreate, InvoiceOut, InvoiceUpdate
+from src.invoices.schemas import (
+    InvoiceCreate, InvoiceItemCreate, InvoiceOut, InvoiceUpdate,
+)
 from src.products.service import upsert_product_by_name
 from src.settings import settings
-from src.stock.service import record_stock_movement
+from src.stock.service import record_stock_movement, reverse_stock_movement
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +127,162 @@ async def update_invoice(invoice_id: int, body: InvoiceUpdate, db: AsyncSession 
     await db.commit()
     await db.refresh(invoice)
     return invoice
+
+
+@router.delete("/{invoice_id}", status_code=204, dependencies=[Depends(require_token)])
+async def delete_invoice(invoice_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete an invoice and reverse the stock movements its items caused."""
+    result = await db.execute(
+        select(PurchaseInvoice)
+        .options(selectinload(PurchaseInvoice.items))
+        .where(PurchaseInvoice.id == invoice_id)
+    )
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    for item in invoice.items:
+        if item.product_id and item.qty:
+            await reverse_stock_movement(
+                db,
+                product_id=item.product_id,
+                qty_change=-item.qty,
+                reference_id=invoice.id,
+                reference_type="purchase_invoice_delete",
+            )
+    await db.delete(invoice)
+    await db.commit()
+
+
+# ── Invoice line-item CRUD ──────────────────────────────────────────────────
+#
+# Used by the dashboard's invoice edit panel so individual rows can be added,
+# corrected, or removed after the invoice has been saved. Every change keeps
+# stock_qty in sync via record/reverse_stock_movement.
+
+async def _load_invoice(db: AsyncSession, invoice_id: int) -> PurchaseInvoice:
+    result = await db.execute(
+        select(PurchaseInvoice)
+        .options(selectinload(PurchaseInvoice.items))
+        .where(PurchaseInvoice.id == invoice_id)
+    )
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice
+
+
+@router.post(
+    "/{invoice_id}/items",
+    response_model=InvoiceOut,
+    status_code=201,
+    dependencies=[Depends(require_token)],
+)
+async def add_item(invoice_id: int, body: InvoiceItemCreate, db: AsyncSession = Depends(get_db)):
+    invoice = await _load_invoice(db, invoice_id)
+
+    product_id = body.product_id
+    if not product_id and body.product_name_raw:
+        product = await upsert_product_by_name(
+            db, body.product_name_raw, default_cost=body.unit_cost
+        )
+        if product:
+            product_id = product.id
+
+    item = PurchaseInvoiceItem(
+        purchase_invoice_id=invoice.id,
+        product_id=product_id,
+        product_name_raw=body.product_name_raw,
+        qty=body.qty,
+        unit_cost=body.unit_cost,
+    )
+    db.add(item)
+    if product_id:
+        await record_stock_movement(
+            db,
+            product_id=product_id,
+            movement_type="purchase",
+            qty_change=body.qty,
+            reference_id=invoice.id,
+            reference_type="purchase_invoice_item_add",
+        )
+    await db.commit()
+    return await _load_invoice(db, invoice_id)
+
+
+@router.put(
+    "/{invoice_id}/items/{item_id}",
+    response_model=InvoiceOut,
+    dependencies=[Depends(require_token)],
+)
+async def update_item(
+    invoice_id: int,
+    item_id: int,
+    body: InvoiceItemCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    item = await db.get(PurchaseInvoiceItem, item_id)
+    if not item or item.purchase_invoice_id != invoice_id:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    old_qty = item.qty
+    old_product_id = item.product_id
+
+    new_product_id = body.product_id
+    if not new_product_id and body.product_name_raw:
+        product = await upsert_product_by_name(
+            db, body.product_name_raw, default_cost=body.unit_cost
+        )
+        if product:
+            new_product_id = product.id
+
+    # Reverse the old movement, then apply the new — handles product changes
+    # (e.g. user renamed a line item to a different product).
+    if old_product_id and old_qty:
+        await reverse_stock_movement(
+            db,
+            product_id=old_product_id,
+            qty_change=-old_qty,
+            reference_id=invoice_id,
+            reference_type="purchase_invoice_item_edit_undo",
+        )
+    if new_product_id and body.qty:
+        await record_stock_movement(
+            db,
+            product_id=new_product_id,
+            movement_type="purchase",
+            qty_change=body.qty,
+            reference_id=invoice_id,
+            reference_type="purchase_invoice_item_edit",
+        )
+
+    item.product_id = new_product_id
+    item.product_name_raw = body.product_name_raw
+    item.qty = body.qty
+    item.unit_cost = body.unit_cost
+    await db.commit()
+    return await _load_invoice(db, invoice_id)
+
+
+@router.delete(
+    "/{invoice_id}/items/{item_id}",
+    response_model=InvoiceOut,
+    dependencies=[Depends(require_token)],
+)
+async def delete_item(invoice_id: int, item_id: int, db: AsyncSession = Depends(get_db)):
+    item = await db.get(PurchaseInvoiceItem, item_id)
+    if not item or item.purchase_invoice_id != invoice_id:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.product_id and item.qty:
+        await reverse_stock_movement(
+            db,
+            product_id=item.product_id,
+            qty_change=-item.qty,
+            reference_id=invoice_id,
+            reference_type="purchase_invoice_item_delete",
+        )
+    await db.delete(item)
+    await db.commit()
+    return await _load_invoice(db, invoice_id)
 
 
 # ── OCR receipt upload ──────────────────────────────────────────────────────

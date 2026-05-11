@@ -18,6 +18,7 @@ class SupplierOut(SupplierCreate):
 
 class ProductCreate(BaseModel):
     sku: str
+    barcode: str | None = None
     name: str
     unit: str | None = None
     cost_price: Decimal = Decimal("0")
@@ -28,6 +29,8 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
+    sku: str | None = None
+    barcode: str | None = None
     name: str | None = None
     unit: str | None = None
     cost_price: Decimal | None = None

@@ -2,7 +2,13 @@ import { useEffect, useState, Fragment } from "react";
 import StatusBadge from "../components/StatusBadge";
 import Modal from "../components/Modal";
 import InvoiceForm from "../components/InvoiceForm";
-import { fetchInvoices, fmt, Invoice } from "../api/client";
+import FormField from "../components/FormField";
+import ProductPicker from "../components/ProductPicker";
+import {
+  addInvoiceItem, deleteInvoice, deleteInvoiceItem, fetchInvoices,
+  fmt, Invoice, InvoiceItemCreate, updateInvoice, updateInvoiceItem,
+} from "../api/client";
+import { useToast } from "../hooks/useToast";
 
 const STATUS_FILTERS = ["all", "unpaid", "partial", "paid"];
 
@@ -10,6 +16,7 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [filter, setFilter] = useState("all");
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [editing, setEditing] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
@@ -60,6 +67,20 @@ export default function Invoices() {
         />
       </Modal>
 
+      {editing && (
+        <Modal open onClose={() => setEditing(null)} title={`Edit invoice #${editing.invoice_number}`} wide>
+          <InvoiceEditForm
+            invoice={editing}
+            onClose={() => setEditing(null)}
+            onChanged={(updated) => {
+              setEditing(updated);
+              load(filter);
+            }}
+            onDeleted={() => { setEditing(null); load(filter); }}
+          />
+        </Modal>
+      )}
+
       {loading ? (
         <div className="page-loading">Loading invoices…</div>
       ) : invoices.length === 0 ? (
@@ -76,6 +97,7 @@ export default function Invoices() {
                 <th>Outstanding</th>
                 <th>Status</th>
                 <th></th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -90,11 +112,17 @@ export default function Invoices() {
                       {fmt(inv.total_amount - inv.paid_amount)}
                     </td>
                     <td><StatusBadge status={inv.status} /></td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={(e) => { e.stopPropagation(); setEditing(inv); }}
+                      >Edit</button>
+                    </td>
                     <td className="expand-icon">{expanded === inv.id ? "▲" : "▼"}</td>
                   </tr>
                   {expanded === inv.id && (
                     <tr className="detail-row">
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <div className="detail-panel">
                           {inv.notes && <p className="detail-notes">Notes: {inv.notes}</p>}
                           {inv.items.length === 0 ? (
@@ -131,6 +159,245 @@ export default function Invoices() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Invoice edit form ──────────────────────────────────────────────────────
+//
+// Lets the user fix the invoice header (number, date, totals, paid, notes)
+// and add / edit / remove individual line items. Every line-item operation
+// hits a dedicated endpoint so stock movements stay accurate.
+
+function InvoiceEditForm({
+  invoice, onClose, onChanged, onDeleted,
+}: {
+  invoice: Invoice;
+  onClose: () => void;
+  onChanged: (updated: Invoice) => void;
+  onDeleted: () => void;
+}) {
+  const toast = useToast();
+  const [invNumber, setInvNumber] = useState(invoice.invoice_number);
+  const [invDate, setInvDate] = useState(invoice.invoice_date);
+  const [total, setTotal] = useState(String(invoice.total_amount));
+  const [paid, setPaid] = useState(String(invoice.paid_amount));
+  const [notes, setNotes] = useState(invoice.notes ?? "");
+  const [savingHeader, setSavingHeader] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const saveHeader = async () => {
+    setError(null);
+    setSavingHeader(true);
+    try {
+      const updated = await updateInvoice(invoice.id, {
+        invoice_number: invNumber.trim(),
+        invoice_date: invDate,
+        total_amount: Number(total) || 0,
+        paid_amount: Number(paid) || 0,
+        notes: notes.trim() || null,
+      });
+      toast.push({ kind: "success", title: "Invoice updated" });
+      onChanged(updated);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Could not save header changes.");
+    } finally {
+      setSavingHeader(false);
+    }
+  };
+
+  const removeInvoice = async () => {
+    if (!confirm("Delete this invoice? Stock movements will be reversed.")) return;
+    try {
+      await deleteInvoice(invoice.id);
+      toast.push({ kind: "success", title: "Invoice deleted" });
+      onDeleted();
+    } catch {
+      toast.push({ kind: "error", title: "Delete failed" });
+    }
+  };
+
+  return (
+    <div className="form-grid">
+      <div className="form-grid form-grid-2">
+        <FormField label="Invoice number">
+          <input className="form-input" value={invNumber} onChange={(e) => setInvNumber(e.target.value)} />
+        </FormField>
+        <FormField label="Date">
+          <input type="date" className="form-input" value={invDate} onChange={(e) => setInvDate(e.target.value)} />
+        </FormField>
+      </div>
+      <div className="form-grid form-grid-2">
+        <FormField label="Total amount" hint="₹">
+          <input
+            type="number" step="0.01" min="0" className="form-input"
+            value={total} onChange={(e) => setTotal(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Paid amount" hint="₹">
+          <input
+            type="number" step="0.01" min="0" className="form-input"
+            value={paid} onChange={(e) => setPaid(e.target.value)}
+          />
+        </FormField>
+      </div>
+      <FormField label="Notes">
+        <textarea className="form-textarea" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </FormField>
+      {error && <div className="form-error">{error}</div>}
+      <div className="form-actions" style={{ justifyContent: "space-between" }}>
+        <button type="button" className="btn btn-ghost text-red" onClick={removeInvoice}>
+          Delete invoice
+        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
+          <button type="button" className="btn btn-primary" onClick={saveHeader} disabled={savingHeader}>
+            {savingHeader ? "Saving…" : "Save header"}
+          </button>
+        </div>
+      </div>
+
+      <hr style={{ border: "none", borderTop: "1px solid var(--divider)", margin: "12px 0" }} />
+
+      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Line items</h3>
+      <ItemsEditor invoiceId={invoice.id} items={invoice.items} onChanged={onChanged} />
+    </div>
+  );
+}
+
+// Inline editor for the invoice's items. Each row tracks its own draft state;
+// changes are sent on Save (per row). New items use the same picker so users
+// can scan a barcode to attach a product.
+
+function ItemsEditor({
+  invoiceId, items, onChanged,
+}: {
+  invoiceId: number;
+  items: Invoice["items"];
+  onChanged: (updated: Invoice) => void;
+}) {
+  const toast = useToast();
+  const [newItem, setNewItem] = useState<{
+    product_id: number | null; product_name: string; qty: string; unit_cost: string;
+  }>({ product_id: null, product_name: "", qty: "", unit_cost: "" });
+
+  const addRow = async () => {
+    if (!newItem.product_name.trim()) {
+      toast.push({ kind: "error", title: "Pick a product" });
+      return;
+    }
+    const body: InvoiceItemCreate = {
+      product_id: newItem.product_id,
+      product_name_raw: newItem.product_name.trim(),
+      qty: Number(newItem.qty) || 0,
+      unit_cost: Number(newItem.unit_cost) || 0,
+    };
+    try {
+      const updated = await addInvoiceItem(invoiceId, body);
+      toast.push({ kind: "success", title: "Item added" });
+      setNewItem({ product_id: null, product_name: "", qty: "", unit_cost: "" });
+      onChanged(updated);
+    } catch {
+      toast.push({ kind: "error", title: "Could not add item" });
+    }
+  };
+
+  return (
+    <div className="line-items-list">
+      {items.map((it) => (
+        <ItemRow key={it.id} invoiceId={invoiceId} item={it} onChanged={onChanged} />
+      ))}
+
+      <div className="line-item-row" style={{ marginTop: 6 }}>
+        <ProductPicker
+          value={{ product_id: newItem.product_id, product_name: newItem.product_name }}
+          onChange={(v) =>
+            setNewItem((p) => ({
+              ...p,
+              product_id: v.product_id,
+              product_name: v.product_name,
+              unit_cost: v.cost_price && !p.unit_cost ? String(v.cost_price) : p.unit_cost,
+            }))
+          }
+        />
+        <input
+          className="form-input" type="number" step="0.001" min="0"
+          value={newItem.qty} onChange={(e) => setNewItem({ ...newItem, qty: e.target.value })}
+          placeholder="Qty"
+        />
+        <input
+          className="form-input" type="number" step="0.01" min="0"
+          value={newItem.unit_cost} onChange={(e) => setNewItem({ ...newItem, unit_cost: e.target.value })}
+          placeholder="Unit cost"
+        />
+        <button type="button" className="btn btn-primary btn-sm" onClick={addRow}>Add</button>
+      </div>
+    </div>
+  );
+}
+
+function ItemRow({
+  invoiceId, item, onChanged,
+}: {
+  invoiceId: number;
+  item: Invoice["items"][number];
+  onChanged: (updated: Invoice) => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(item.product_name_raw ?? "");
+  const [qty, setQty] = useState(String(item.qty));
+  const [cost, setCost] = useState(String(item.unit_cost));
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const updated = await updateInvoiceItem(invoiceId, item.id, {
+        product_id: null,
+        product_name_raw: name.trim() || null,
+        qty: Number(qty) || 0,
+        unit_cost: Number(cost) || 0,
+      });
+      toast.push({ kind: "success", title: "Item updated" });
+      onChanged(updated);
+    } catch {
+      toast.push({ kind: "error", title: "Update failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm("Remove this item? Stock will be adjusted.")) return;
+    setBusy(true);
+    try {
+      const updated = await deleteInvoiceItem(invoiceId, item.id);
+      toast.push({ kind: "success", title: "Item removed" });
+      onChanged(updated);
+    } catch {
+      toast.push({ kind: "error", title: "Remove failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="line-item-row">
+      <input
+        className="form-input" value={name}
+        onChange={(e) => setName(e.target.value)} placeholder="Product name"
+      />
+      <input
+        className="form-input" type="number" step="0.001" min="0"
+        value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty"
+      />
+      <input
+        className="form-input" type="number" step="0.01" min="0"
+        value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Unit cost"
+      />
+      <button type="button" className="btn btn-ghost btn-sm" onClick={save} disabled={busy}>Save</button>
+      <button type="button" className="line-item-remove" onClick={remove} disabled={busy} aria-label="Remove">×</button>
     </div>
   );
 }

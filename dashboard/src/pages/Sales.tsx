@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { deleteSale, fetchSales, fmt, SaleRow } from "../api/client";
+import { deleteSale, fetchSales, fmt, SaleRow, updateSale } from "../api/client";
 import { useToast } from "../hooks/useToast";
+import FormField from "../components/FormField";
 import Modal from "../components/Modal";
 import SaleForm from "../components/SaleForm";
 
@@ -12,6 +13,7 @@ export default function Sales() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<SaleRow | null>(null);
 
   const load = (d: string) => {
     setLoading(true);
@@ -96,6 +98,7 @@ export default function Sales() {
                   <td className="bold">{fmt(s.line_total)}</td>
                   <td><span className="mode-chip">{s.source}</span></td>
                   <td style={{ textAlign: "right" }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(s)}>Edit</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => onDelete(s.id, s.product_name_raw)}>
                       Delete
                     </button>
@@ -114,6 +117,87 @@ export default function Sales() {
           onSaved={() => { setShowForm(false); load(date); }}
         />
       </Modal>
+
+      {editing && (
+        <Modal open onClose={() => setEditing(null)} title="Edit sale">
+          <SaleEditForm
+            sale={editing}
+            onCancel={() => setEditing(null)}
+            onSaved={() => { setEditing(null); load(date); }}
+          />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+// ── Sale row edit form ─────────────────────────────────────────────────────
+//
+// Quick-correct form — adjusts qty, unit price, and the raw product name.
+// Stock is reconciled on the backend via record_stock_movement("adjustment").
+
+function SaleEditForm({
+  sale, onSaved, onCancel,
+}: {
+  sale: SaleRow;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(sale.product_name_raw ?? "");
+  const [qty, setQty] = useState(String(sale.qty_sold));
+  const [price, setPrice] = useState(String(sale.selling_price));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const q = Number(qty);
+    if (!q || q <= 0) { setError("Quantity must be > 0."); return; }
+    setSubmitting(true);
+    try {
+      await updateSale(sale.id, {
+        qty_sold: q,
+        selling_price: Number(price) || 0,
+        product_name_raw: name.trim() || null,
+      });
+      toast.push({ kind: "success", title: "Sale updated" });
+      onSaved();
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Could not update.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-grid">
+      <FormField label="Product name">
+        <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} />
+      </FormField>
+      <div className="form-grid form-grid-2">
+        <FormField label="Quantity">
+          <input
+            type="number" step="0.001" min="0" className="form-input"
+            value={qty} onChange={(e) => setQty(e.target.value)} required
+          />
+        </FormField>
+        <FormField label="Selling price" hint="₹ per unit">
+          <input
+            type="number" step="0.01" min="0" className="form-input"
+            value={price} onChange={(e) => setPrice(e.target.value)}
+          />
+        </FormField>
+      </div>
+      {error && <div className="form-error">{error}</div>}
+      <div className="form-actions">
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={submitting}>
+          {submitting ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </form>
   );
 }

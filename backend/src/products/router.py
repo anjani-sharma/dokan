@@ -108,14 +108,34 @@ async def search_products(
     name: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
 ):
-    """Case-insensitive substring search on product name."""
+    """Substring search on name, SKU, or barcode (all case-insensitive)."""
+    q = name.strip()
     result = await db.execute(
         select(Product)
-        .where(Product.name.ilike(f"%{name}%"), Product.is_active == True)  # noqa: E712
+        .where(
+            Product.is_active == True,  # noqa: E712
+            (
+                Product.name.ilike(f"%{q}%")
+                | Product.sku.ilike(f"%{q}%")
+                | Product.barcode.ilike(f"%{q}%")
+            ),
+        )
         .order_by(Product.name)
         .limit(10)
     )
     return result.scalars().all()
+
+
+@router.get("/barcode/{code}", response_model=ProductOut)
+async def get_by_barcode(code: str, db: AsyncSession = Depends(get_db)):
+    """Exact barcode lookup — used by the dashboard's scan flow."""
+    result = await db.execute(
+        select(Product).where(Product.barcode == code, Product.is_active == True)  # noqa: E712
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="No product with that barcode")
+    return product
 
 
 @router.get("/low-stock", response_model=list[ProductOut])

@@ -103,6 +103,7 @@ export interface OcrInvoiceResult {
 export interface Product {
   id: number;
   sku: string;
+  barcode: string | null;
   name: string;
   unit: string | null;
   cost_price: number;
@@ -110,6 +111,18 @@ export interface Product {
   stock_qty: number;
   reorder_level: number;
   is_active: boolean;
+}
+
+export interface ProductUpdate {
+  sku?: string;
+  barcode?: string | null;
+  name?: string;
+  unit?: string | null;
+  cost_price?: number;
+  selling_price?: number;
+  stock_qty?: number;
+  reorder_level?: number;
+  is_active?: boolean;
 }
 
 export interface InvoiceItem {
@@ -291,6 +304,10 @@ export interface InvoiceCreate {
 }
 
 export interface InvoiceUpdate {
+  invoice_number?: string;
+  supplier_id?: number;
+  invoice_date?: string;
+  total_amount?: number;
   paid_amount?: number;
   status?: string;
   notes?: string | null;
@@ -548,6 +565,26 @@ export const createInvoice = (body: InvoiceCreate): Promise<Invoice> =>
 
 export const updateInvoice = (id: number, body: InvoiceUpdate): Promise<Invoice> =>
   api.put(`/invoices/${id}`, body).then(r => coerceInvoice(r.data));
+
+export const deleteInvoice = (id: number): Promise<void> =>
+  api.delete(`/invoices/${id}`).then(() => undefined);
+
+export const addInvoiceItem = (invoiceId: number, body: InvoiceItemCreate): Promise<Invoice> =>
+  api.post(`/invoices/${invoiceId}/items`, body).then(r => coerceInvoice(r.data));
+
+export const updateInvoiceItem = (
+  invoiceId: number, itemId: number, body: InvoiceItemCreate,
+): Promise<Invoice> =>
+  api.put(`/invoices/${invoiceId}/items/${itemId}`, body).then(r => coerceInvoice(r.data));
+
+export const deleteInvoiceItem = (invoiceId: number, itemId: number): Promise<Invoice> =>
+  api.delete(`/invoices/${invoiceId}/items/${itemId}`).then(r => coerceInvoice(r.data));
+
+export const updateProduct = (id: number, body: ProductUpdate): Promise<Product> =>
+  api.put(`/products/${id}`, body).then(r => coerceProduct(r.data));
+
+export const fetchProductByBarcode = (code: string): Promise<Product> =>
+  api.get(`/products/barcode/${encodeURIComponent(code)}`).then(r => coerceProduct(r.data));
 
 export const createPayment = (body: PaymentCreate): Promise<Payment> =>
   api.post("/payments", body).then(r => coercePayment(r.data));
