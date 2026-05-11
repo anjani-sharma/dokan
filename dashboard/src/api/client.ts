@@ -173,6 +173,8 @@ export interface CustomerSummary {
   total_received: number;
   balance: number;
   last_activity: string | null;
+  oldest_due_date: string | null;
+  days_overdue: number | null;
 }
 
 export interface CustomerLedgerEntry {

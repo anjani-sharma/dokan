@@ -44,6 +44,7 @@ export default function CustomerPicker({ value, onChange, placeholder }: Custome
       const summary: CustomerSummary = {
         id: c.id, name: c.name, phone: c.phone,
         total_sales: 0, total_received: 0, balance: 0, last_activity: null,
+        oldest_due_date: null, days_overdue: null,
       };
       setAll((prev) => prev.some((x) => x.id === c.id) ? prev : [...prev, summary]);
       pick(summary);

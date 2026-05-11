@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { createSale, SaleCreate } from "../api/client";
+import { createCustomer, createSale, SaleCreate } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import CustomerPicker from "./CustomerPicker";
 import FormField from "./FormField";
+import Modal from "./Modal";
 import ProductPicker from "./ProductPicker";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -26,6 +27,7 @@ export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormPro
   const [price, setPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   const onPickProduct = (v: { product_id: number | null; product_name: string; selling_price?: number }) => {
     setProduct({ product_id: v.product_id, product_name: v.product_name });
@@ -89,13 +91,107 @@ export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormPro
         />
       </FormField>
       <FormField label="Customer" hint="optional — for credit / installment sales">
-        <CustomerPicker value={customer} onChange={setCustomer} />
+        <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+          <div style={{ flex: 1 }}>
+            <CustomerPicker value={customer} onChange={setCustomer} />
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowNewCustomer(true)}
+          >
+            + New
+          </button>
+        </div>
       </FormField>
+
+      <Modal
+        open={showNewCustomer}
+        onClose={() => setShowNewCustomer(false)}
+        title="Add a new customer"
+      >
+        <NewCustomerInlineForm
+          onCancel={() => setShowNewCustomer(false)}
+          onCreated={(c) => {
+            setCustomer({ customer_id: c.id, customer_name: c.name });
+            setShowNewCustomer(false);
+            toast.push({ kind: "success", title: "Customer added", body: c.name });
+          }}
+        />
+      </Modal>
       {error && <div className="form-error">{error}</div>}
       <div className="form-actions">
         <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           {submitting ? "Saving…" : "Save sale"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ── Inline create-customer panel used by the Sales flow ────────────────────
+
+function NewCustomerInlineForm({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (c: { id: number; name: string }) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim()) { setError("Name is required."); return; }
+    setSubmitting(true);
+    try {
+      const created = await createCustomer({
+        name: name.trim(),
+        phone: phone.trim() || null,
+        address: address.trim() || null,
+      });
+      onCreated({ id: created.id, name: created.name });
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Could not create customer.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-grid">
+      <FormField label="Name">
+        <input
+          className="form-input" value={name} autoFocus required
+          onChange={(e) => setName(e.target.value)}
+        />
+      </FormField>
+      <div className="form-grid form-grid-2">
+        <FormField label="Phone">
+          <input
+            className="form-input" value={phone}
+            onChange={(e) => setPhone(e.target.value)} placeholder="optional"
+          />
+        </FormField>
+        <FormField label="Address">
+          <input
+            className="form-input" value={address}
+            onChange={(e) => setAddress(e.target.value)} placeholder="optional"
+          />
+        </FormField>
+      </div>
+      {error && <div className="form-error">{error}</div>}
+      <div className="form-actions">
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={submitting}>
+          {submitting ? "Adding…" : "Add customer"}
         </button>
       </div>
     </form>

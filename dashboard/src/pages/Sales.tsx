@@ -20,6 +20,12 @@ export default function Sales() {
 
   useEffect(() => { load(date); }, [date]);
 
+  useEffect(() => {
+    const onChanged = () => load(date);
+    window.addEventListener("ananta:data-changed", onChanged);
+    return () => window.removeEventListener("ananta:data-changed", onChanged);
+  }, [date]);
+
   const onDelete = async (id: number, name: string | null) => {
     if (!confirm(`Delete this sale${name ? ` (${name})` : ""}? Stock will be returned.`)) return;
     try {

@@ -5,6 +5,7 @@ Customers carry running balances: sales are debits (they owe us), inflow
 payments are credits (they paid us). We compute the ledger by reading both
 tables and merging chronologically.
 """
+from datetime import date as date_cls
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -116,6 +117,27 @@ async def summarise_customer(db: AsyncSession, customer: Customer) -> CustomerSu
         if last_activity is None or p.payment_date > last_activity:
             last_activity = p.payment_date
 
+    # ── Aging: FIFO-match payments against sales by date to find the
+    # oldest sale that still has an outstanding portion.
+    oldest_due_date = None
+    days_overdue: int | None = None
+    if total_sales - total_received > 0:
+        sales_again = await db.execute(
+            select(DailySale)
+            .where(DailySale.customer_id == customer.id)
+            .order_by(DailySale.sale_date, DailySale.id)
+        )
+        pool = total_received
+        for s in sales_again.scalars().all():
+            amt = (s.qty_sold or Decimal("0")) * (s.selling_price or Decimal("0"))
+            if pool >= amt:
+                pool -= amt
+                continue
+            oldest_due_date = s.sale_date
+            break
+        if oldest_due_date is not None:
+            days_overdue = (date_cls.today() - oldest_due_date).days
+
     return CustomerSummary(
         id=customer.id,
         name=customer.name,
@@ -124,4 +146,6 @@ async def summarise_customer(db: AsyncSession, customer: Customer) -> CustomerSu
         total_received=total_received,
         balance=total_sales - total_received,
         last_activity=last_activity,
+        oldest_due_date=oldest_due_date,
+        days_overdue=days_overdue,
     )

@@ -34,7 +34,12 @@ export default function QuickAddFab({ onSaved }: Props) {
     setModal(kind);
   };
   const close = () => setModal(null);
-  const saved = () => { setModal(null); onSaved?.(); };
+  const saved = () => {
+    setModal(null);
+    // Broadcast so any open page can refetch without us holding a ref to it.
+    window.dispatchEvent(new CustomEvent("ananta:data-changed"));
+    onSaved?.();
+  };
 
   return (
     <>

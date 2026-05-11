@@ -393,6 +393,7 @@ body { min-height: 100vh; background: var(--bg); color: var(--text); }
 .badge-orange { background: var(--orange-soft);  color: var(--orange); }
 .badge-blue   { background: var(--blue-soft);    color: var(--blue); }
 .badge-grey   { background: rgba(255,255,255,.06); color: var(--text-muted); }
+.badge-yellow { background: rgba(234,179,8,.15);   color: #facc15; }
 
 .mode-chip {
   display: inline-block; padding: 2px 8px; border-radius: 5px;

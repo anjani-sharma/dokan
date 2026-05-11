@@ -21,7 +21,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const load = () => fetchAnalytics().then(setData).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const onChanged = () => { load(); };
+    window.addEventListener("ananta:data-changed", onChanged);
+    window.addEventListener("focus", onChanged);
+    return () => {
+      window.removeEventListener("ananta:data-changed", onChanged);
+      window.removeEventListener("focus", onChanged);
+    };
+  }, []);
 
   if (loading || !data) return <div className="page-loading">Loading…</div>;
 
@@ -42,6 +51,9 @@ export default function Dashboard() {
         <div>
           <h1>Dashboard</h1>
           <div className="page-subtitle">{TODAY_HEADER()}</div>
+        </div>
+        <div className="header-actions">
+          <button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button>
         </div>
       </div>
 

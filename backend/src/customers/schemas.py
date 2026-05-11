@@ -34,6 +34,8 @@ class CustomerSummary(BaseModel):
     total_received: Decimal
     balance: Decimal           # positive = customer owes us
     last_activity: date | None
+    oldest_due_date: date | None = None   # earliest sale not yet covered by payments (FIFO)
+    days_overdue: int | None = None       # days from oldest_due_date to today
 
 
 class CustomerLedgerEntry(BaseModel):

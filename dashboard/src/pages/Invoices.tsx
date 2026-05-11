@@ -22,6 +22,12 @@ export default function Invoices() {
 
   useEffect(() => { load(filter); }, [filter]);
 
+  useEffect(() => {
+    const onChanged = () => load(filter);
+    window.addEventListener("ananta:data-changed", onChanged);
+    return () => window.removeEventListener("ananta:data-changed", onChanged);
+  }, [filter]);
+
   const toggle = (id: number) => setExpanded(prev => prev === id ? null : id);
 
   return (

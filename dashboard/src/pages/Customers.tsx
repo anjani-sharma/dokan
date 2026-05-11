@@ -31,8 +31,15 @@ export default function Customers() {
     return () => clearTimeout(t);
   }, [query]);
 
+  useEffect(() => {
+    const onChanged = () => load(query);
+    window.addEventListener("ananta:data-changed", onChanged);
+    return () => window.removeEventListener("ananta:data-changed", onChanged);
+  }, [query]);
+
   const totalOutstanding = customers.reduce((s, c) => s + Math.max(c.balance, 0), 0);
   const customersWithDues = customers.filter((c) => c.balance > 0).length;
+  const over30 = customers.filter((c) => c.balance > 0 && (c.days_overdue ?? 0) > 30).length;
 
   return (
     <div className="page">
@@ -50,7 +57,7 @@ export default function Customers() {
         </div>
       </div>
 
-      <div className="kpi-grid kpi-grid-3">
+      <div className="kpi-grid kpi-grid-4">
         <div className="kpi-card kpi-indigo">
           <div className="kpi-label">Customers</div>
           <div className="kpi-value">{customers.length}</div>
@@ -63,6 +70,11 @@ export default function Customers() {
         <div className="kpi-card kpi-red">
           <div className="kpi-label">Total outstanding</div>
           <div className="kpi-value">{fmt(totalOutstanding)}</div>
+        </div>
+        <div className="kpi-card kpi-red">
+          <div className="kpi-label">Overdue 30+ days</div>
+          <div className="kpi-value">{over30}</div>
+          <div className="kpi-sub">need follow-up</div>
         </div>
       </div>
 
@@ -84,6 +96,7 @@ export default function Customers() {
                 <th>Total sold</th>
                 <th>Received</th>
                 <th>Balance</th>
+                <th>Aging</th>
                 <th>Last activity</th>
               </tr>
             </thead>
@@ -99,6 +112,7 @@ export default function Customers() {
                     <td className={owes ? "text-red bold" : c.balance < 0 ? "text-orange bold" : "text-muted"}>
                       {fmt(c.balance)}
                     </td>
+                    <td><AgingBadge days={c.days_overdue} owes={owes} /></td>
                     <td className="text-muted">{c.last_activity ?? "—"}</td>
                   </tr>
                 );
@@ -242,6 +256,21 @@ function CustomerDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
       )}
     </Modal>
   );
+}
+
+// ── Aging badge ─────────────────────────────────────────────────────────────
+//
+// Uses days_overdue (from oldest unpaid sale via FIFO) to bucket follow-up
+// urgency: 0–30 grey, 31–60 yellow, 61–90 orange, 90+ red.
+
+function AgingBadge({ days, owes }: { days: number | null; owes: boolean }) {
+  if (!owes || days == null) return <span className="text-muted">—</span>;
+  let cls = "badge-grey";
+  let label = `${days} d`;
+  if (days > 90) { cls = "badge-red"; label = `${days} d · 90+`; }
+  else if (days > 60) { cls = "badge-orange"; label = `${days} d · 60+`; }
+  else if (days > 30) { cls = "badge-yellow"; label = `${days} d · 30+`; }
+  return <span className={"badge " + cls}>{label}</span>;
 }
 
 // ── Create / edit form ─────────────────────────────────────────────────────
