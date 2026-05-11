@@ -260,6 +260,9 @@ export interface SaleCreate {
   selling_price: number;
   source: string;
   raw_input: string | null;
+  // Optional point-of-sale payment
+  payment_amount?: number | null;
+  payment_mode?: "cash" | "gpay" | "upi" | "bank_deposit" | "other" | null;
 }
 
 export interface SaleUpdate {

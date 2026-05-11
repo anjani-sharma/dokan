@@ -13,6 +13,12 @@ class SaleCreate(BaseModel):
     selling_price: Decimal
     source: str = "voice"
     raw_input: str | None = None
+    # Optional point-of-sale payment captured alongside the sale.
+    # When set, a matching inflow Payment row is created in the same
+    # transaction so the cash drawer and the customer ledger update
+    # immediately. Amount may be partial (less than qty * selling_price).
+    payment_amount: Decimal | None = None
+    payment_mode: str | None = None  # cash | gpay | upi | bank_deposit | other
 
 
 class SaleUpdate(BaseModel):

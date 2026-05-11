@@ -28,6 +28,13 @@ export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormPro
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  // Point-of-sale payment state. Default to "full" — the common case is
+  // a walk-in cash sale paid in full at the till.
+  const [payKind, setPayKind] = useState<"full" | "partial" | "credit">("full");
+  const [payMode, setPayMode] = useState<"cash" | "gpay" | "upi" | "bank_deposit" | "other">("cash");
+  const [partialAmount, setPartialAmount] = useState("");
+
+  const lineTotal = (Number(qty) || 0) * (Number(price) || 0);
 
   const onPickProduct = (v: { product_id: number | null; product_name: string; selling_price?: number }) => {
     setProduct({ product_id: v.product_id, product_name: v.product_name });
@@ -43,6 +50,16 @@ export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormPro
     if (!qtyN || qtyN <= 0) { setError("Quantity must be greater than zero."); return; }
     if (priceN < 0) { setError("Price cannot be negative."); return; }
 
+    let paymentAmount: number | null = null;
+    if (payKind === "full") {
+      paymentAmount = qtyN * priceN;
+    } else if (payKind === "partial") {
+      const pn = Number(partialAmount);
+      if (!pn || pn <= 0) { setError("Enter the partial payment amount."); return; }
+      if (pn > qtyN * priceN + 0.001) { setError("Partial payment can't exceed sale total."); return; }
+      paymentAmount = pn;
+    }
+
     const body: SaleCreate = {
       sale_date: date,
       product_id: product.product_id,
@@ -52,6 +69,8 @@ export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormPro
       selling_price: priceN,
       source: "manual",
       raw_input: null,
+      payment_amount: paymentAmount,
+      payment_mode: paymentAmount ? payMode : null,
     };
     setSubmitting(true);
     try {
@@ -119,6 +138,58 @@ export default function SaleForm({ onSaved, onCancel, defaultDate }: SaleFormPro
           }}
         />
       </Modal>
+      <FormField label="Payment received" hint="record what changed hands at the till">
+        <div className="filter-group">
+          <button
+            type="button"
+            className={"filter-btn" + (payKind === "full" ? " active" : "")}
+            onClick={() => setPayKind("full")}
+          >Full ({lineTotal ? `₹${lineTotal.toFixed(2)}` : "—"})</button>
+          <button
+            type="button"
+            className={"filter-btn" + (payKind === "partial" ? " active" : "")}
+            onClick={() => setPayKind("partial")}
+          >Partial</button>
+          <button
+            type="button"
+            className={"filter-btn" + (payKind === "credit" ? " active" : "")}
+            onClick={() => setPayKind("credit")}
+          >On credit</button>
+        </div>
+      </FormField>
+
+      {payKind !== "credit" && (
+        <div className="form-grid form-grid-2">
+          {payKind === "partial" && (
+            <FormField label="Amount paid now" hint="₹">
+              <input
+                type="number" step="0.01" min="0" className="form-input"
+                value={partialAmount} onChange={(e) => setPartialAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </FormField>
+          )}
+          <FormField label="Payment mode">
+            <select
+              className="form-select" value={payMode}
+              onChange={(e) => setPayMode(e.target.value as typeof payMode)}
+            >
+              <option value="cash">Cash</option>
+              <option value="gpay">GPay</option>
+              <option value="upi">UPI</option>
+              <option value="bank_deposit">Bank deposit</option>
+              <option value="other">Other</option>
+            </select>
+          </FormField>
+        </div>
+      )}
+
+      {payKind === "credit" && customer.customer_id == null && (
+        <div className="text-muted" style={{ fontSize: 12 }}>
+          Tip: attach a customer above so the outstanding balance shows up on the Customers page.
+        </div>
+      )}
+
       {error && <div className="form-error">{error}</div>}
       <div className="form-actions">
         <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={submitting}>Cancel</button>

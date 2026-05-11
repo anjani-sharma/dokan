@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import get_db, require_token
+from src.payments.models import Payment
 from src.products.service import upsert_product_by_name
 from src.sales.models import DailySale
 from src.sales.schemas import SaleCreate, SaleOut, SaleUpdate
@@ -42,6 +43,15 @@ async def create_sale(body: SaleCreate, db: AsyncSession = Depends(get_db)):
         if product:
             body.product_id = product.id
 
+    # Pop POS-payment fields — they live on the request body but not on the
+    # DailySale row. We use them after the sale is flushed to create an
+    # inflow Payment in the same transaction.
+    pos_amount = body.payment_amount
+    pos_mode = body.payment_mode
+    sale_data = body.model_dump(exclude={"payment_amount", "payment_mode"})
+
+    target_sale: DailySale
+
     # Upsert: check for existing record with same product_id + date
     if body.product_id:
         existing_result = await db.execute(
@@ -65,27 +75,39 @@ async def create_sale(body: SaleCreate, db: AsyncSession = Depends(get_db)):
                 reference_id=existing.id,
                 reference_type="daily_sale_upsert",
             )
-            await db.commit()
-            await db.refresh(existing)
-            return existing
+            target_sale = existing
+        else:
+            target_sale = DailySale(**sale_data)
+            db.add(target_sale)
+            await db.flush()
+            await record_stock_movement(
+                db,
+                product_id=body.product_id,
+                movement_type="sale",
+                qty_change=-body.qty_sold,
+                reference_id=target_sale.id,
+                reference_type="daily_sale",
+            )
+    else:
+        target_sale = DailySale(**sale_data)
+        db.add(target_sale)
+        await db.flush()
 
-    sale = DailySale(**body.model_dump())
-    db.add(sale)
-    await db.flush()
-
-    if body.product_id:
-        await record_stock_movement(
-            db,
-            product_id=body.product_id,
-            movement_type="sale",
-            qty_change=-body.qty_sold,
-            reference_id=sale.id,
-            reference_type="daily_sale",
-        )
+    # Point-of-sale payment: write an inflow Payment row so the cash drawer
+    # and the customer ledger reflect the cash that just changed hands.
+    if pos_amount and pos_amount > 0 and pos_mode:
+        db.add(Payment(
+            payment_date=body.sale_date,
+            amount=pos_amount,
+            payment_mode=pos_mode,
+            direction="inflow",
+            customer_id=body.customer_id,
+            note=f"Point-of-sale payment for sale #{target_sale.id}",
+        ))
 
     await db.commit()
-    await db.refresh(sale)
-    return sale
+    await db.refresh(target_sale)
+    return target_sale
 
 
 @router.put("/daily/{sale_id}", response_model=SaleOut, dependencies=[Depends(require_token)])
