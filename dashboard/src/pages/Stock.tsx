@@ -68,6 +68,7 @@ export default function Stock() {
             <thead>
               <tr>
                 <th>SKU</th>
+                <th>Barcode</th>
                 <th>Product</th>
                 <th>Unit</th>
                 <th>Stock</th>
@@ -85,10 +86,8 @@ export default function Stock() {
                   className={`clickable-row ${isLow(p) ? "row-warning" : ""} ${selectedProduct === p.id ? "row-selected" : ""}`}
                   onClick={() => setSelectedProduct(prev => prev === p.id ? null : p.id)}
                 >
-                  <td className="text-muted">
-                    {p.sku}
-                    {p.barcode && <div style={{ fontSize: 10, color: "var(--text-dim)" }}>⌗ {p.barcode}</div>}
-                  </td>
+                  <td className="text-muted">{p.sku}</td>
+                  <td className="text-muted">{p.barcode ?? "—"}</td>
                   <td><strong>{p.name}</strong>{!p.is_active && <span className="badge badge-grey" style={{ marginLeft: 6 }}>inactive</span>}</td>
                   <td>{p.unit ?? "—"}</td>
                   <td className={isLow(p) ? "text-orange bold" : ""}>{p.stock_qty}</td>
@@ -110,7 +109,7 @@ export default function Stock() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="empty-state">No products found.</td></tr>
+                <tr><td colSpan={10} className="empty-state">No products found.</td></tr>
               )}
             </tbody>
           </table>
