@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://ananta-backend-c025.onrender.com/:path*" },
+    { "source": "/api/:path*", "destination": "https://dokane-app.onrender.com/:path*" },
     { "source": "/(.*)",       "destination": "/index.html" }
   ]
 }
