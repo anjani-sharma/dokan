@@ -2,11 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.dependencies import get_db
+from src.dependencies import get_db, require_token
 from src.products.models import Product, Supplier
 from src.products.schemas import (
     ProductCreate, ProductOut, ProductUpdate,
     SupplierCreate, SupplierOut,
+)
+from src.products.supplier_service import (
+    SupplierLedger, SupplierSummary, SupplierUpdate,
+    build_supplier_ledger, summarise_supplier,
 )
 
 router = APIRouter()
@@ -20,7 +24,7 @@ async def list_suppliers(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.post("/suppliers", response_model=SupplierOut, status_code=201)
+@router.post("/suppliers", response_model=SupplierOut, status_code=201, dependencies=[Depends(require_token)])
 async def create_supplier(body: SupplierCreate, db: AsyncSession = Depends(get_db)):
     supplier = Supplier(**body.model_dump())
     db.add(supplier)
@@ -29,7 +33,7 @@ async def create_supplier(body: SupplierCreate, db: AsyncSession = Depends(get_d
     return supplier
 
 
-@router.post("/suppliers/upsert", response_model=SupplierOut)
+@router.post("/suppliers/upsert", response_model=SupplierOut, dependencies=[Depends(require_token)])
 async def upsert_supplier(body: SupplierCreate, db: AsyncSession = Depends(get_db)):
     """Find supplier by name (case-insensitive) or create if not found."""
     result = await db.execute(select(Supplier).order_by(Supplier.name))
@@ -41,6 +45,51 @@ async def upsert_supplier(body: SupplierCreate, db: AsyncSession = Depends(get_d
     await db.commit()
     await db.refresh(supplier)
     return supplier
+
+
+@router.get("/suppliers/summaries", response_model=list[SupplierSummary])
+async def supplier_summaries(db: AsyncSession = Depends(get_db)):
+    """All suppliers with totals (for the Suppliers page list view)."""
+    result = await db.execute(select(Supplier).order_by(Supplier.name))
+    return [await summarise_supplier(db, s) for s in result.scalars().all()]
+
+
+@router.get("/suppliers/outstanding", response_model=list[SupplierSummary])
+async def supplier_outstanding(db: AsyncSession = Depends(get_db)):
+    """Suppliers we still owe, highest balance first."""
+    result = await db.execute(select(Supplier))
+    summaries = [await summarise_supplier(db, s) for s in result.scalars().all()]
+    summaries = [s for s in summaries if s.balance > 0]
+    summaries.sort(key=lambda s: s.balance, reverse=True)
+    return summaries
+
+
+@router.get("/suppliers/{supplier_id}", response_model=SupplierOut)
+async def get_supplier(supplier_id: int, db: AsyncSession = Depends(get_db)):
+    supplier = await db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return supplier
+
+
+@router.put("/suppliers/{supplier_id}", response_model=SupplierOut, dependencies=[Depends(require_token)])
+async def update_supplier(supplier_id: int, body: SupplierUpdate, db: AsyncSession = Depends(get_db)):
+    supplier = await db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(supplier, field, value)
+    await db.commit()
+    await db.refresh(supplier)
+    return supplier
+
+
+@router.get("/suppliers/{supplier_id}/ledger", response_model=SupplierLedger)
+async def supplier_ledger(supplier_id: int, db: AsyncSession = Depends(get_db)):
+    supplier = await db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return await build_supplier_ledger(db, supplier)
 
 
 # ── Products ───────────────────────────────────────────────────────────────
@@ -82,7 +131,7 @@ async def low_stock_products(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.post("", response_model=ProductOut, status_code=201)
+@router.post("", response_model=ProductOut, status_code=201, dependencies=[Depends(require_token)])
 async def create_product(body: ProductCreate, db: AsyncSession = Depends(get_db)):
     product = Product(**body.model_dump())
     db.add(product)
@@ -99,7 +148,7 @@ async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
     return product
 
 
-@router.put("/{product_id}", response_model=ProductOut)
+@router.put("/{product_id}", response_model=ProductOut, dependencies=[Depends(require_token)])
 async def update_product(product_id: int, body: ProductUpdate, db: AsyncSession = Depends(get_db)):
     product = await db.get(Product, product_id)
     if not product:

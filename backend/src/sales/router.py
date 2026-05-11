@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.dependencies import get_db
+from src.dependencies import get_db, require_token
 from src.sales.models import DailySale
 from src.sales.schemas import SaleCreate, SaleOut, SaleUpdate
 from src.stock.service import record_stock_movement, reverse_stock_movement
@@ -24,7 +24,7 @@ async def list_sales(
     return result.scalars().all()
 
 
-@router.post("/daily", response_model=SaleOut, status_code=201)
+@router.post("/daily", response_model=SaleOut, status_code=201, dependencies=[Depends(require_token)])
 async def create_sale(body: SaleCreate, db: AsyncSession = Depends(get_db)):
     """
     Record a sale. If the same product_id already has an entry for that date,
@@ -76,7 +76,7 @@ async def create_sale(body: SaleCreate, db: AsyncSession = Depends(get_db)):
     return sale
 
 
-@router.put("/daily/{sale_id}", response_model=SaleOut)
+@router.put("/daily/{sale_id}", response_model=SaleOut, dependencies=[Depends(require_token)])
 async def update_sale(sale_id: int, body: SaleUpdate, db: AsyncSession = Depends(get_db)):
     sale = await db.get(DailySale, sale_id)
     if not sale:
@@ -102,7 +102,7 @@ async def update_sale(sale_id: int, body: SaleUpdate, db: AsyncSession = Depends
     return sale
 
 
-@router.delete("/daily/{sale_id}", status_code=204)
+@router.delete("/daily/{sale_id}", status_code=204, dependencies=[Depends(require_token)])
 async def delete_sale(sale_id: int, db: AsyncSession = Depends(get_db)):
     sale = await db.get(DailySale, sale_id)
     if not sale:

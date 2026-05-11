@@ -16,6 +16,7 @@ class Payment(Base):
     payment_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     direction: Mapped[str] = mapped_column(String(10), nullable=False)
     purchase_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_invoices.id"))
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), index=True)
     transaction_ref: Mapped[str | None] = mapped_column(String(100))
     image_path: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)

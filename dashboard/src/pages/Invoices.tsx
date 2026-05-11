@@ -1,5 +1,7 @@
 import { useEffect, useState, Fragment } from "react";
 import StatusBadge from "../components/StatusBadge";
+import Modal from "../components/Modal";
+import InvoiceForm from "../components/InvoiceForm";
 import { fetchInvoices, fmt, Invoice } from "../api/client";
 
 const STATUS_FILTERS = ["all", "unpaid", "partial", "paid"];
@@ -9,32 +11,48 @@ export default function Invoices() {
   const [filter, setFilter] = useState("all");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
 
-  useEffect(() => {
+  const load = (f: string) => {
     setLoading(true);
-    fetchInvoices(filter === "all" ? undefined : filter)
+    fetchInvoices(f === "all" ? undefined : f)
       .then(setInvoices)
       .finally(() => setLoading(false));
-  }, [filter]);
+  };
+
+  useEffect(() => { load(filter); }, [filter]);
 
   const toggle = (id: number) => setExpanded(prev => prev === id ? null : id);
 
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Purchase Invoices</h1>
-        <div className="filter-group">
-          {STATUS_FILTERS.map(s => (
-            <button
-              key={s}
-              className={`filter-btn ${filter === s ? "active" : ""}`}
-              onClick={() => setFilter(s)}
-            >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
+        <div>
+          <h1>Purchase Invoices</h1>
+          <div className="page-subtitle">Bills you owe to suppliers.</div>
+        </div>
+        <div className="header-actions">
+          <div className="filter-group">
+            {STATUS_FILTERS.map(s => (
+              <button
+                key={s}
+                className={`filter-btn ${filter === s ? "active" : ""}`}
+                onClick={() => setFilter(s)}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ New invoice</button>
         </div>
       </div>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record a purchase invoice" wide>
+        <InvoiceForm
+          onCancel={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load(filter); }}
+        />
+      </Modal>
 
       {loading ? (
         <div className="page-loading">Loading invoices…</div>

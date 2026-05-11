@@ -4,6 +4,8 @@ import {
 } from "recharts";
 import { fetchPayments, fmt, Payment } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
+import Modal from "../components/Modal";
+import PaymentForm from "../components/PaymentForm";
 
 const MODE_FILTERS = ["all", "gpay", "bank_deposit", "cash", "upi", "other"];
 const DIR_FILTERS  = ["all", "inflow", "outflow"];
@@ -22,16 +24,19 @@ export default function Payments() {
   const [modeFilter, setMode]     = useState("all");
   const [dirFilter,  setDir]      = useState("all");
   const [loading, setLoading]     = useState(true);
+  const [showForm, setShowForm]   = useState(false);
 
-  useEffect(() => {
+  const load = (dir: string, mode: string) => {
     setLoading(true);
     fetchPayments({
-      payment_mode: modeFilter !== "all" ? modeFilter : undefined,
-      direction:    dirFilter  !== "all" ? dirFilter  : undefined,
+      payment_mode: mode !== "all" ? mode : undefined,
+      direction:    dir  !== "all" ? dir  : undefined,
     })
       .then(setPayments)
       .finally(() => setLoading(false));
-  }, [modeFilter, dirFilter]);
+  };
+
+  useEffect(() => { load(dirFilter, modeFilter); }, [modeFilter, dirFilter]);
 
   const totalIn  = payments.filter(p => p.direction === "inflow") .reduce((s, p) => s + p.amount, 0);
   const totalOut = payments.filter(p => p.direction === "outflow").reduce((s, p) => s + p.amount, 0);
@@ -43,32 +48,46 @@ export default function Payments() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Payments</h1>
-        <div className="filter-row">
-          <div className="filter-group">
-            {DIR_FILTERS.map(d => (
-              <button
-                key={d}
-                className={`filter-btn ${dirFilter === d ? "active" : ""}`}
-                onClick={() => setDir(d)}
-              >
-                {d === "inflow" ? "↙ Received" : d === "outflow" ? "↗ Made" : "All"}
-              </button>
-            ))}
+        <div>
+          <h1>Payments</h1>
+          <div className="page-subtitle">Money in and out.</div>
+        </div>
+        <div className="header-actions">
+          <div className="filter-row">
+            <div className="filter-group">
+              {DIR_FILTERS.map(d => (
+                <button
+                  key={d}
+                  className={`filter-btn ${dirFilter === d ? "active" : ""}`}
+                  onClick={() => setDir(d)}
+                >
+                  {d === "inflow" ? "↙ Received" : d === "outflow" ? "↗ Made" : "All"}
+                </button>
+              ))}
+            </div>
+            <div className="filter-group">
+              {MODE_FILTERS.map(m => (
+                <button
+                  key={m}
+                  className={`filter-btn ${modeFilter === m ? "active" : ""}`}
+                  onClick={() => setMode(m)}
+                >
+                  {m === "all" ? "All Modes" : m === "bank_deposit" ? "Bank" : m.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="filter-group">
-            {MODE_FILTERS.map(m => (
-              <button
-                key={m}
-                className={`filter-btn ${modeFilter === m ? "active" : ""}`}
-                onClick={() => setMode(m)}
-              >
-                {m === "all" ? "All Modes" : m === "bank_deposit" ? "Bank" : m.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ New payment</button>
         </div>
       </div>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Record a payment">
+        <PaymentForm
+          defaultDirection={dirFilter === "inflow" ? "inflow" : "outflow"}
+          onCancel={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load(dirFilter, modeFilter); }}
+        />
+      </Modal>
 
       {/* Summary strip */}
       <div className="kpi-grid kpi-grid-3">

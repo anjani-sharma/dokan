@@ -10,6 +10,7 @@ class PaymentCreate(BaseModel):
     payment_mode: str  # cash | bank_deposit | gpay | upi | other
     direction: str     # inflow | outflow
     purchase_invoice_id: int | None = None
+    customer_id: int | None = None        # meaningful for inflows
     transaction_ref: str | None = None
     image_path: str | None = None
     note: str | None = None

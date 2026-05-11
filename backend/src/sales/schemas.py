@@ -1,12 +1,13 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict
 
 
 class SaleCreate(BaseModel):
     sale_date: date
     product_id: int | None = None
+    customer_id: int | None = None
     product_name_raw: str | None = None
     qty_sold: Decimal
     selling_price: Decimal
@@ -18,6 +19,7 @@ class SaleUpdate(BaseModel):
     qty_sold: Decimal | None = None
     selling_price: Decimal | None = None
     product_id: int | None = None
+    customer_id: int | None = None
     product_name_raw: str | None = None
 
 
@@ -26,6 +28,7 @@ class SaleOut(BaseModel):
     id: int
     sale_date: date
     product_id: int | None
+    customer_id: int | None
     product_name_raw: str | None
     qty_sold: Decimal
     selling_price: Decimal

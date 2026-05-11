@@ -13,6 +13,7 @@ class DailySale(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     sale_date: Mapped[date] = mapped_column(Date, nullable=False)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"))
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), index=True)
     product_name_raw: Mapped[str | None] = mapped_column(String(255))
     qty_sold: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     selling_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

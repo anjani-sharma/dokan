@@ -78,6 +78,8 @@ git push -u origin master
    | `R2_SECRET_ACCESS_KEY` | from Cloudflare (or leave blank) |
    | `R2_BUCKET_NAME` | `ananta-images` (or leave blank) |
    | `R2_PUBLIC_URL` | https://pub-xxx.r2.dev (or leave blank) |
+   | `DASHBOARD_PIN` | 4-digit PIN that gates the dashboard (e.g. `1234`) |
+   | `DASHBOARD_SECRET` | long random string — rotate to invalidate sessions |
 
 5. Click **Deploy** — first deploy runs Alembic migrations automatically (via `start.sh`)
 6. Wait for deploy to finish (2–4 min). You'll see a URL like:

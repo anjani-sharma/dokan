@@ -15,6 +15,8 @@ from src.payments.router import router as payments_router
 from src.stock.router import router as stock_router
 from src.reports.router import router as reports_router
 from src.bot.router import router as bot_router
+from src.auth.router import router as auth_router
+from src.customers.router import router as customers_router
 
 logger = logging.getLogger(__name__)
 IST = pytz.timezone(settings.timezone)
@@ -25,11 +27,12 @@ scheduler = AsyncIOScheduler(timezone=IST)
 async def lifespan(app: FastAPI):
     # ── Create DB tables (idempotent — safe to run every startup) ────────────
     from src.db import engine, Base
-    import src.products.models  # noqa: F401
-    import src.invoices.models  # noqa: F401
-    import src.sales.models     # noqa: F401
-    import src.stock.models     # noqa: F401
-    import src.payments.models  # noqa: F401
+    import src.products.models   # noqa: F401
+    import src.invoices.models   # noqa: F401
+    import src.sales.models      # noqa: F401
+    import src.stock.models      # noqa: F401
+    import src.payments.models   # noqa: F401
+    import src.customers.models  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified/created")
@@ -73,13 +76,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(products_router, prefix="/products",  tags=["products"])
-app.include_router(invoices_router, prefix="/invoices",  tags=["invoices"])
-app.include_router(sales_router,    prefix="/sales",     tags=["sales"])
-app.include_router(payments_router, prefix="/payments",  tags=["payments"])
-app.include_router(stock_router,    prefix="/stock",     tags=["stock"])
-app.include_router(reports_router,  prefix="/reports",   tags=["reports"])
-app.include_router(bot_router,      prefix="/bot",       tags=["bot"])
+app.include_router(auth_router,      prefix="/auth",      tags=["auth"])
+app.include_router(products_router,  prefix="/products",  tags=["products"])
+app.include_router(customers_router, prefix="/customers", tags=["customers"])
+app.include_router(invoices_router,  prefix="/invoices",  tags=["invoices"])
+app.include_router(sales_router,     prefix="/sales",     tags=["sales"])
+app.include_router(payments_router,  prefix="/payments",  tags=["payments"])
+app.include_router(stock_router,     prefix="/stock",     tags=["stock"])
+app.include_router(reports_router,   prefix="/reports",   tags=["reports"])
+app.include_router(bot_router,       prefix="/bot",       tags=["bot"])
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

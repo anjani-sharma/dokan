@@ -97,6 +97,11 @@ TELEGRAM_BOT_TOKEN=7123456789:AAF...
 SHOP_CHAT_ID=123456789
 
 SHOP_NAME=Sharma Electricals
+
+# DOKANE dashboard PIN gate. Mutations (POST/PUT/DELETE) require this PIN.
+# Leave blank in dev to disable. Rotate DASHBOARD_SECRET to invalidate sessions.
+DASHBOARD_PIN=1234
+DASHBOARD_SECRET=long-random-string-keep-secret
 ```
 
 Save: `Ctrl+X` → `Y` → `Enter`

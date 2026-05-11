@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     timezone: str = "Asia/Kolkata"
     shop_name: str = "My Shop"
 
+    # Dashboard auth — PIN gate on mutation endpoints.
+    # Empty `dashboard_pin` disables the gate entirely (dev / local). In prod
+    # set both DASHBOARD_PIN (4 digits) and DASHBOARD_SECRET (random string).
+    dashboard_pin: str = ""
+    dashboard_secret: str = "change-me-dashboard-secret"
+
     # Cloudflare R2 (optional — falls back to local storage if not set)
     r2_account_id: str = ""
     r2_access_key_id: str = ""

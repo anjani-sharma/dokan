@@ -26,6 +26,10 @@ services:
         value: Asia/Kolkata
       - key: IMAGES_DIR
         value: /tmp/ananta_images
+      - key: DASHBOARD_PIN
+        sync: false          # 4-digit PIN that gates dashboard mutations
+      - key: DASHBOARD_SECRET
+        sync: false          # long random string; rotating invalidates tokens
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID

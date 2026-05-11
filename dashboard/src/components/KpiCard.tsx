@@ -2,7 +2,7 @@ interface Props {
   label: string;
   value: string;
   sub?: string;
-  accent?: "green" | "red" | "orange" | "blue";
+  accent?: "green" | "red" | "orange" | "blue" | "indigo";
 }
 
 export default function KpiCard({ label, value, sub, accent = "blue" }: Props) {
