@@ -85,22 +85,17 @@ export default function Suppliers() {
                 <th>Paid</th>
                 <th>Due</th>
                 <th>Last activity</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => {
-                const due = s.balance > 0;
-                return (
-                  <tr key={s.id} className="clickable-row" onClick={() => setSelected(s.id)}>
-                    <td><strong>{s.name}</strong></td>
-                    <td className="text-muted">{s.phone ?? "—"}</td>
-                    <td>{fmt(s.total_invoiced)}</td>
-                    <td className="text-green">{fmt(s.total_paid)}</td>
-                    <td className={due ? "text-red bold" : "text-muted"}>{fmt(s.balance)}</td>
-                    <td className="text-muted">{s.last_activity ?? "—"}</td>
-                  </tr>
-                );
-              })}
+              {filtered.map((s) => (
+                <VendorRow
+                  key={s.id}
+                  vendor={s}
+                  onOpen={() => setSelected(s.id)}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -125,6 +120,96 @@ export default function Suppliers() {
         <BillsDuePanel onPickVendor={(id) => { setShowBills(false); setSelected(id); }} />
       </Modal>
     </div>
+  );
+}
+
+// ── Expandable vendor row with last-5 mini-ledger ─────────────────────────
+//
+// Click to toggle; the first expand lazy-fetches the ledger so the list
+// view stays cheap. Inside, we show the most recent 5 entries and a button
+// to open the full ledger modal.
+
+function VendorRow({
+  vendor, onOpen,
+}: { vendor: SupplierSummary; onOpen: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [ledger, setLedger] = useState<SupplierLedger | null>(null);
+  const [loadingLedger, setLoadingLedger] = useState(false);
+  const due = vendor.balance > 0;
+
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && ledger == null && !loadingLedger) {
+      setLoadingLedger(true);
+      fetchSupplierLedger(vendor.id)
+        .then(setLedger)
+        .finally(() => setLoadingLedger(false));
+    }
+  };
+
+  const recent = ledger
+    ? ledger.entries.slice().sort((a, b) => b.entry_date.localeCompare(a.entry_date)).slice(0, 5)
+    : [];
+
+  return (
+    <>
+      <tr className="clickable-row" onClick={toggle}>
+        <td><strong>{vendor.name}</strong></td>
+        <td className="text-muted">{vendor.phone ?? "—"}</td>
+        <td>{fmt(vendor.total_invoiced)}</td>
+        <td className="text-green">{fmt(vendor.total_paid)}</td>
+        <td className={due ? "text-red bold" : "text-muted"}>{fmt(vendor.balance)}</td>
+        <td className="text-muted">{vendor.last_activity ?? "—"}</td>
+        <td className="expand-icon">{expanded ? "▲" : "▼"}</td>
+      </tr>
+      {expanded && (
+        <tr className="detail-row">
+          <td colSpan={7}>
+            <div className="detail-panel">
+              <div className="filter-row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+                <div className="bold" style={{ fontSize: 13 }}>Recent activity</div>
+                <button className="btn btn-primary btn-sm" onClick={onOpen}>
+                  View full ledger
+                </button>
+              </div>
+              {loadingLedger ? (
+                <div className="text-muted">Loading…</div>
+              ) : recent.length === 0 ? (
+                <div className="text-muted">No invoices or payments yet.</div>
+              ) : (
+                <table className="data-table inner-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Description</th>
+                      <th>Invoiced</th>
+                      <th>Paid</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((e, i) => (
+                      <tr key={`${e.entry_type}-${e.source_id}-${i}`}>
+                        <td>{e.entry_date}</td>
+                        <td>
+                          <span className={"badge " + (e.entry_type === "invoice" ? "badge-blue" : "badge-green")}>
+                            {e.entry_type}
+                          </span>
+                        </td>
+                        <td>{e.description}</td>
+                        <td className="text-red">{e.debit > 0 ? fmt(e.debit) : ""}</td>
+                        <td className="text-green">{e.credit > 0 ? fmt(e.credit) : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

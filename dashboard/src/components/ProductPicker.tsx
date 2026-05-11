@@ -7,13 +7,15 @@ interface ProductPickerProps {
   placeholder?: string;
 }
 
-// Detect the browser's native BarcodeDetector (Chromium-based, mobile Chrome
-// on Android, Edge). Safari/Firefox don't ship it — we hide the scan button
-// there. Capture the support flag at module load so we don't pay for the
-// `in` check on every render.
-const HAS_BARCODE_DETECTOR =
-  typeof window !== "undefined" &&
-  typeof (window as unknown as { BarcodeDetector?: unknown }).BarcodeDetector === "function";
+// Camera scanning is available wherever getUserMedia exists. We try the
+// browser's native BarcodeDetector first (fast, Chromium-based) and fall
+// back to @zxing/browser everywhere else — including iOS Safari, which
+// doesn't ship BarcodeDetector. ZXing is dynamic-imported when the user
+// actually opens the scanner so it doesn't bloat the main bundle.
+const HAS_CAMERA =
+  typeof navigator !== "undefined" &&
+  !!navigator.mediaDevices &&
+  typeof navigator.mediaDevices.getUserMedia === "function";
 
 export default function ProductPicker({ value, onChange, placeholder }: ProductPickerProps) {
   const [query, setQuery] = useState(value.product_name);
@@ -118,7 +120,7 @@ export default function ProductPicker({ value, onChange, placeholder }: ProductP
           onKeyDown={onKeyDown}
           placeholder={placeholder ?? "Search by name, SKU, or scan barcode…"}
         />
-        {HAS_BARCODE_DETECTOR && (
+        {HAS_CAMERA && (
           <button
             type="button" className="btn btn-secondary btn-sm"
             onClick={() => setScanning(true)} title="Scan barcode"
@@ -164,11 +166,13 @@ export default function ProductPicker({ value, onChange, placeholder }: ProductP
   );
 }
 
-// ── Camera-based barcode scanner using the browser's BarcodeDetector API ───
+// ── Camera-based barcode scanner ─────────────────────────────────────────
 //
-// Falls back gracefully: caller hides the trigger button when the API is
-// missing. We use a simple requestAnimationFrame loop instead of a heavy
-// library; a single detected frame closes the modal and returns the code.
+// Two backends: browser-native BarcodeDetector when present (Chromium),
+// and @zxing/browser elsewhere — Safari, Firefox, older Android Chrome.
+// Loads ZXing on demand via dynamic import so the main bundle stays small.
+
+type ZxingControls = { stop: () => void };
 
 function BarcodeScannerModal({
   onResult, onClose,
@@ -177,52 +181,72 @@ function BarcodeScannerModal({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
     let stopped = false;
+    let stream: MediaStream | null = null;
     let frame = 0;
+    let zxingControls: ZxingControls | null = null;
 
-    type Detector = {
-      detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]>;
-    };
-    const W = window as unknown as {
-      BarcodeDetector: new (opts?: { formats?: string[] }) => Detector;
+    const hasNative =
+      typeof (window as unknown as { BarcodeDetector?: unknown }).BarcodeDetector === "function";
+
+    const fail = (e: unknown) => {
+      if (stopped) return;
+      setError(e instanceof Error ? e.message : "Could not access camera");
     };
 
-    const start = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
+    const startNative = async () => {
+      type Detector = { detect: (s: CanvasImageSource) => Promise<{ rawValue: string }[]> };
+      const W = window as unknown as {
+        BarcodeDetector: new (opts?: { formats?: string[] }) => Detector;
+      };
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }, audio: false,
+      });
+      if (stopped || !videoRef.current) return;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      const detector = new W.BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
+      });
+      const tick = async () => {
         if (stopped || !videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        const detector = new W.BarcodeDetector({
-          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
-        });
-        const tick = async () => {
-          if (stopped || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            if (codes.length > 0) {
-              onResult(codes[0].rawValue);
-              return;
-            }
-          } catch {
-            /* keep scanning */
-          }
-          frame = requestAnimationFrame(tick);
-        };
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes.length > 0) { onResult(codes[0].rawValue); return; }
+        } catch { /* keep scanning */ }
         frame = requestAnimationFrame(tick);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not access camera");
-      }
+      };
+      frame = requestAnimationFrame(tick);
     };
-    void start();
+
+    const startZxing = async () => {
+      const { BrowserMultiFormatReader } = await import("@zxing/browser");
+      if (stopped || !videoRef.current) return;
+      const reader = new BrowserMultiFormatReader();
+      const controls = await reader.decodeFromVideoDevice(
+        undefined, // let the lib pick the rear camera
+        videoRef.current,
+        (result) => {
+          if (stopped) return;
+          if (result) onResult(result.getText());
+        },
+      );
+      zxingControls = controls;
+    };
+
+    (async () => {
+      try {
+        if (hasNative) await startNative();
+        else await startZxing();
+      } catch (e) {
+        fail(e);
+      }
+    })();
 
     return () => {
       stopped = true;
       cancelAnimationFrame(frame);
+      if (zxingControls) zxingControls.stop();
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, [onResult]);
