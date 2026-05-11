@@ -1,4 +1,5 @@
 import { useEffect, ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   open: boolean;
@@ -7,6 +8,11 @@ interface ModalProps {
   children: ReactNode;
   wide?: boolean;
 }
+
+// Renders into <body> via a portal so the modal's DOM lives outside any
+// enclosing <form>. Without this, a form inside a modal that itself sits
+// inside another form (e.g. New-Customer inside SaleForm) gets eaten by
+// the browser's "no nested forms" rule and submits the outer form instead.
 
 export default function Modal({ open, onClose, title, children, wide }: ModalProps) {
   useEffect(() => {
@@ -23,7 +29,7 @@ export default function Modal({ open, onClose, title, children, wide }: ModalPro
 
   if (!open) return null;
 
-  return (
+  const node = (
     <div className="modal-backdrop" onClick={onClose}>
       <div
         className={"modal-card" + (wide ? " modal-wide" : "")}
@@ -39,4 +45,6 @@ export default function Modal({ open, onClose, title, children, wide }: ModalPro
       </div>
     </div>
   );
+
+  return createPortal(node, document.body);
 }
