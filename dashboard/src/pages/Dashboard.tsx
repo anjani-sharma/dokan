@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { AnalyticsPayload, fetchAnalytics, fmt } from "../api/client";
 import {
-  IconAlert, IconCalendar, IconCart, IconCash, IconCreditCard,
+  IconAlert, IconBuilding, IconCalendar, IconCart, IconCash, IconCreditCard,
   IconFile, IconPhone, IconTrend, IconUsers,
 } from "../components/Icons";
 
@@ -44,6 +44,7 @@ export default function Dashboard() {
 
   const cashTotal = data.cash_drawer.cash + data.cash_drawer.upi + data.cash_drawer.card + data.cash_drawer.other;
   const customersOwedTotal = data.customers_outstanding.reduce((s, c) => s + c.balance, 0);
+  const vendorsOwedTotal = data.suppliers_outstanding.reduce((s, v) => s + v.balance, 0);
 
   return (
     <div className="page">
@@ -58,7 +59,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── KPI strip ───────────────────────────────────────────────── */}
-      <div className="kpi-grid kpi-grid-4">
+      <div className="kpi-grid kpi-grid-5">
         <div className="kpi-card">
           <div className="kpi-icon kpi-icon-brand"><IconCart /></div>
           <div className="kpi-label">Today's Sales</div>
@@ -73,9 +74,15 @@ export default function Dashboard() {
         </div>
         <div className="kpi-card">
           <div className="kpi-icon kpi-icon-orange"><IconCalendar /></div>
-          <div className="kpi-label">Outstanding</div>
+          <div className="kpi-label">Customers Owe You</div>
           <div className="kpi-value">{fmt(customersOwedTotal)}</div>
-          <div className="kpi-sub">Customer balances owed</div>
+          <div className="kpi-sub">{data.customers_outstanding.length} customer{data.customers_outstanding.length === 1 ? "" : "s"}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon kpi-icon-red"><IconBuilding /></div>
+          <div className="kpi-label">You Owe Vendors</div>
+          <div className="kpi-value">{fmt(vendorsOwedTotal)}</div>
+          <div className="kpi-sub">{data.suppliers_outstanding.length} vendor{data.suppliers_outstanding.length === 1 ? "" : "s"}</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-icon kpi-icon-red"><IconAlert /></div>
@@ -104,7 +111,7 @@ export default function Dashboard() {
         </div>
 
         <div className="chart-card">
-          <h2>Top Outstanding Balances</h2>
+          <h2>Top Customer Balances</h2>
           {data.customers_outstanding.length === 0 ? (
             <div className="empty-state">No outstanding balances</div>
           ) : (
@@ -120,6 +127,52 @@ export default function Dashboard() {
                     {c.phone && <div className="activity-sub"><IconPhone size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{c.phone}</div>}
                   </div>
                   <div className="activity-amount text-red">{fmt(c.balance)}</div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="charts-grid charts-grid-2">
+        <div className="chart-card">
+          <h2>Top Vendor Balances</h2>
+          {data.suppliers_outstanding.length === 0 ? (
+            <div className="empty-state">No vendor dues</div>
+          ) : (
+            <div className="activity-list">
+              {data.suppliers_outstanding.slice(0, 5).map((v) => (
+                <Link
+                  key={v.id} to="/suppliers"
+                  className="activity-row" style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  <div className="activity-icon kpi-icon-red"><IconBuilding size={14} /></div>
+                  <div className="activity-body">
+                    <div className="activity-title">{v.name}</div>
+                    {v.phone && <div className="activity-sub"><IconPhone size={10} style={{ verticalAlign: -1, marginRight: 3 }} />{v.phone}</div>}
+                  </div>
+                  <div className="activity-amount text-red">{fmt(v.balance)}</div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="chart-card">
+          <h2>Low Stock</h2>
+          {data.low_stock.length === 0 ? (
+            <div className="empty-state">Nothing low — all stocked up.</div>
+          ) : (
+            <div className="activity-list">
+              {data.low_stock.slice(0, 5).map((p) => (
+                <Link
+                  key={p.id} to="/stock"
+                  className="activity-row" style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  <div className="activity-icon kpi-icon-orange"><IconAlert size={14} /></div>
+                  <div className="activity-body">
+                    <div className="activity-title">{p.name}</div>
+                    <div className="activity-sub">on hand {p.stock_qty}{p.unit ? " " + p.unit : ""} · reorder at {p.reorder_level}</div>
+                  </div>
                 </Link>
               ))}
             </div>

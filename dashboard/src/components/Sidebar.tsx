@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { clearToken } from "../api/client";
 import {
   IconBox, IconBuilding, IconCart, IconChart, IconDashboard, IconFile,
-  IconLogout, IconPackage, IconUsers,
+  IconLogout, IconUsers,
 } from "./Icons";
 
 // Configurable shop label shown under the logo. Hardcoded for now —
@@ -12,12 +12,11 @@ const SHOP_LABEL = "RK ENTERPRISES";
 const links = [
   { to: "/",           label: "Dashboard",  icon: IconDashboard },
   { to: "/sales",      label: "Sales",      icon: IconCart },
-  { to: "/invoices",   label: "Purchases",  icon: IconPackage },
   { to: "/customers",  label: "Customers",  icon: IconUsers },
+  { to: "/suppliers",  label: "Vendors",    icon: IconBuilding },
   { to: "/stock",      label: "Products",   icon: IconBox },
   { to: "/payments",   label: "Payments",   icon: IconFile },
   { to: "/analytics",  label: "Analytics",  icon: IconChart },
-  { to: "/suppliers",  label: "Vendors",    icon: IconBuilding },
 ];
 
 export default function Sidebar({ onLinkClick }: { onLinkClick?: () => void }) {

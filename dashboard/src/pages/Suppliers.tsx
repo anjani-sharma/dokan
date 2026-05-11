@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  fetchSupplierLedger, fetchSupplierSummaries, fmt, SupplierLedger, SupplierSummary,
-  updateSupplier, upsertSupplier,
+  fetchInvoices, fetchSupplierLedger, fetchSupplierSummaries, fmt,
+  Invoice, SupplierLedger, SupplierSummary, updateSupplier, upsertSupplier,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import FormField from "../components/FormField";
+import InvoiceForm from "../components/InvoiceForm";
 import Modal from "../components/Modal";
 import PaymentForm from "../components/PaymentForm";
 
@@ -15,6 +16,7 @@ export default function Suppliers() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showBills, setShowBills] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -44,7 +46,8 @@ export default function Suppliers() {
             className="search-input" placeholder="Search by name…"
             value={query} onChange={(e) => setQuery(e.target.value)}
           />
-          <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ New supplier</button>
+          <button className="btn btn-secondary" onClick={() => setShowBills(true)}>Bills due</button>
+          <button className="btn btn-primary" onClick={() => setShowNew(true)}>+ New vendor</button>
         </div>
       </div>
 
@@ -107,17 +110,101 @@ export default function Suppliers() {
         <SupplierDetail id={selected} onClose={() => setSelected(null)} onChanged={load} />
       )}
 
-      <Modal open={showNew} onClose={() => setShowNew(false)} title="New supplier">
+      <Modal open={showNew} onClose={() => setShowNew(false)} title="New vendor">
         <SupplierCreateForm
           onCancel={() => setShowNew(false)}
           onSaved={() => {
             setShowNew(false);
-            toast.push({ kind: "success", title: "Supplier added" });
+            toast.push({ kind: "success", title: "Vendor added" });
             load();
           }}
         />
       </Modal>
+
+      <Modal open={showBills} onClose={() => setShowBills(false)} title="Bills due across all vendors" wide>
+        <BillsDuePanel onPickVendor={(id) => { setShowBills(false); setSelected(id); }} />
+      </Modal>
     </div>
+  );
+}
+
+// ── Cross-vendor unpaid bills list ─────────────────────────────────────────
+//
+// Quick filter so the user can answer "what bills should I pay this week?"
+// without needing to know the vendor name first. Pulls unpaid + partial
+// invoices in one go and groups by vendor.
+
+function BillsDuePanel({ onPickVendor }: { onPickVendor: (vendorId: number) => void }) {
+  const [bills, setBills] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [vendors, setVendors] = useState<Map<number, string>>(new Map());
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetchInvoices("unpaid"),
+      fetchInvoices("partial"),
+      fetchSupplierSummaries(),
+    ])
+      .then(([u, p, s]) => {
+        const all = [...u, ...p].sort((a, b) => a.invoice_date.localeCompare(b.invoice_date));
+        setBills(all);
+        setVendors(new Map(s.map((x) => [x.id, x.name])));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="page-loading">Loading bills…</div>;
+  if (bills.length === 0) return <div className="empty-state">No unpaid bills. You're all caught up.</div>;
+
+  const total = bills.reduce((s, b) => s + (b.total_amount - b.paid_amount), 0);
+
+  return (
+    <>
+      <div className="kpi-grid kpi-grid-3" style={{ marginBottom: 16 }}>
+        <div className="kpi-card kpi-orange">
+          <div className="kpi-label">Bills due</div>
+          <div className="kpi-value">{bills.length}</div>
+        </div>
+        <div className="kpi-card kpi-red">
+          <div className="kpi-label">Total outstanding</div>
+          <div className="kpi-value">{fmt(total)}</div>
+        </div>
+        <div className="kpi-card kpi-indigo">
+          <div className="kpi-label">Vendors involved</div>
+          <div className="kpi-value">{new Set(bills.map((b) => b.supplier_id)).size}</div>
+        </div>
+      </div>
+      <div className="table-card">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Invoice #</th>
+              <th>Vendor</th>
+              <th>Date</th>
+              <th>Total</th>
+              <th>Paid</th>
+              <th>Outstanding</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bills.map((b) => (
+              <tr
+                key={b.id} className="clickable-row"
+                onClick={() => onPickVendor(b.supplier_id)}
+              >
+                <td><strong>#{b.invoice_number}</strong></td>
+                <td>{vendors.get(b.supplier_id) ?? `#${b.supplier_id}`}</td>
+                <td>{b.invoice_date}</td>
+                <td>{fmt(b.total_amount)}</td>
+                <td className="text-green">{fmt(b.paid_amount)}</td>
+                <td className="text-red bold">{fmt(b.total_amount - b.paid_amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -128,6 +215,7 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
   const [ledger, setLedger] = useState<SupplierLedger | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPayment, setShowPayment] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const load = () => {
@@ -165,6 +253,7 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
             </div>
             <div className="filter-group">
               <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit details</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowInvoice(true)}>+ New invoice</button>
               <button className="btn btn-primary btn-sm" onClick={() => setShowPayment(true)}>+ Record payment</button>
             </div>
           </div>
@@ -212,6 +301,21 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
                 onSaved={() => {
                   setShowPayment(false);
                   toast.push({ kind: "success", title: "Payment recorded" });
+                  load();
+                  onChanged();
+                }}
+              />
+            </Modal>
+          )}
+
+          {showInvoice && (
+            <Modal open onClose={() => setShowInvoice(false)} title={`New invoice for ${ledger.supplier_name}`} wide>
+              <InvoiceForm
+                defaultSupplier={{ supplier_id: id, supplier_name: ledger.supplier_name }}
+                onCancel={() => setShowInvoice(false)}
+                onSaved={() => {
+                  setShowInvoice(false);
+                  toast.push({ kind: "success", title: "Invoice saved" });
                   load();
                   onChanged();
                 }}

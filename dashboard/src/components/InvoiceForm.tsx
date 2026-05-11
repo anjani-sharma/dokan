@@ -12,6 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 interface InvoiceFormProps {
   onSaved: () => void;
   onCancel: () => void;
+  defaultSupplier?: { supplier_id: number; supplier_name: string };
 }
 
 type DraftItem = {
@@ -23,12 +24,12 @@ type DraftItem = {
 
 const emptyItem = (): DraftItem => ({ product_id: null, product_name: "", qty: "", unit_cost: "" });
 
-export default function InvoiceForm({ onSaved, onCancel }: InvoiceFormProps) {
+export default function InvoiceForm({ onSaved, onCancel, defaultSupplier }: InvoiceFormProps) {
   const toast = useToast();
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [supplier, setSupplier] = useState<{ supplier_id: number | null; supplier_name: string }>({
-    supplier_id: null, supplier_name: "",
-  });
+  const [supplier, setSupplier] = useState<{ supplier_id: number | null; supplier_name: string }>(
+    defaultSupplier ?? { supplier_id: null, supplier_name: "" }
+  );
   const [invoiceDate, setInvoiceDate] = useState(today());
   const [totalAmount, setTotalAmount] = useState("");
   const [notes, setNotes] = useState("");

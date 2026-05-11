@@ -234,6 +234,7 @@ body { min-height: 100vh; background: var(--bg); color: var(--text); }
 }
 .kpi-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .kpi-grid-4 { grid-template-columns: repeat(4, 1fr); }
+.kpi-grid-5 { grid-template-columns: repeat(5, 1fr); }
 
 .kpi-card {
   background: var(--surface);
@@ -643,7 +644,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   .mobile-topbar { display: flex; }
   .main-content { padding: 16px 14px 110px; }
   .charts-grid, .charts-grid-2 { grid-template-columns: 1fr; }
-  .kpi-grid, .kpi-grid-3, .kpi-grid-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-grid, .kpi-grid-3, .kpi-grid-4, .kpi-grid-5 { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .kpi-card { padding: 14px; }
   .kpi-value { font-size: 18px; }
   .kpi-card .kpi-icon { width: 26px; height: 26px; top: 12px; right: 12px; }
@@ -661,7 +662,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 }
 
 @media (max-width: 480px) {
-  .kpi-grid, .kpi-grid-3, .kpi-grid-4 { grid-template-columns: 1fr; }
+  .kpi-grid, .kpi-grid-3, .kpi-grid-4, .kpi-grid-5 { grid-template-columns: 1fr; }
   .data-table { font-size: 12px; }
   .data-table th, .data-table td { padding: 10px 12px; }
 }
