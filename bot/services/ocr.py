@@ -72,6 +72,17 @@ Rules:
   any UPI app (PhonePe, Paytm, BHIM) → upi, hand-written cash receipt → cash.
 - If a field is unclear or missing, use null — never guess.
 - Return ONLY the JSON object, no markdown, no explanation.
+
+Vocabulary for invoices (important — the shop reads these in reverse):
+- The shop is the BUYER, so the party whose name is on the letterhead /
+  at the top of the bill is the "supplier" or "vendor". Put their name in
+  "supplier_name".
+- Handwritten Indian shop invoices often label the recipient "Customer: <name>"
+  — that name is the SHOP itself, not a customer in our system. Do NOT
+  include "Customer: ..." in the notes. Refer to the other party only as
+  the vendor/supplier in any prose.
+- When summarising in the notes field, use "Vendor" or "Supplier", never
+  "Customer".
 """
 
 
