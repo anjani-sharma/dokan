@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { createPayment, fetchInvoices, Invoice, PaymentCreate } from "../api/client";
+import { useEffect, useRef, useState } from "react";
+import {
+  createPayment, fetchInvoices, Invoice, ocrInvoiceUpload, PaymentCreate,
+} from "../api/client";
 import { useToast } from "../hooks/useToast";
 import CustomerPicker from "./CustomerPicker";
 import FormField from "./FormField";
@@ -35,6 +37,66 @@ export default function PaymentForm({ onSaved, onCancel, defaultDirection }: Pay
   const [openInvoices, setOpenInvoices] = useState<Invoice[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imagePath, setImagePath] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+
+  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setOcrBusy(true);
+    setImagePreview(URL.createObjectURL(file));
+    try {
+      const result = await ocrInvoiceUpload(file);
+      if (result.image_path) setImagePath(result.image_path);
+
+      if (result.type === "payment_slip") {
+        if (result.amount != null) setAmount(String(result.amount));
+        if (result.payment_mode) setMode(result.payment_mode);
+        if (result.payment_date) setDate(result.payment_date);
+        if (result.transaction_ref) setRef(result.transaction_ref);
+        if (result.note && !note) setNote(result.note);
+        toast.push({
+          kind: "success",
+          title: "Payment slip read",
+          body: `Confidence: ${result.confidence}. Review before saving.`,
+        });
+      } else if (result.type === "invoice") {
+        // Treat invoice photos as outflow against the matching invoice.
+        setDirection("outflow");
+        if (result.total_amount != null) setAmount(String(result.total_amount));
+        if (result.invoice_date) setDate(result.invoice_date);
+        // Try to match against the loaded open invoices by invoice_number.
+        if (result.invoice_number) {
+          const match = openInvoices.find(
+            (i) => i.invoice_number.trim().toLowerCase() === result.invoice_number!.trim().toLowerCase()
+          );
+          if (match) setInvoiceId(match.id);
+        }
+        toast.push({
+          kind: "success",
+          title: "Invoice read",
+          body: result.invoice_number
+            ? `Invoice #${result.invoice_number} — review then save.`
+            : "Review the prefilled fields.",
+        });
+      } else {
+        toast.push({
+          kind: "error",
+          title: "Couldn't read",
+          body: "Try a clearer photo.",
+        });
+      }
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.push({ kind: "error", title: "OCR failed", body: msg ?? "Try a clearer photo." });
+    } finally {
+      setOcrBusy(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
 
   // Load unpaid + partial invoices when direction = outflow.
   useEffect(() => {
@@ -58,7 +120,7 @@ export default function PaymentForm({ onSaved, onCancel, defaultDirection }: Pay
       purchase_invoice_id: direction === "outflow" ? invoiceId : null,
       customer_id: direction === "inflow" ? customer.customer_id : null,
       transaction_ref: ref.trim() || null,
-      image_path: null,
+      image_path: imagePath,
       note: note.trim() || null,
     };
 
@@ -81,6 +143,34 @@ export default function PaymentForm({ onSaved, onCancel, defaultDirection }: Pay
 
   return (
     <form onSubmit={submit} className="form-grid">
+      <div className="ocr-upload">
+        <input
+          type="file" accept="image/*" ref={fileInput} style={{ display: "none" }}
+          onChange={onUpload} disabled={ocrBusy || submitting}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => fileInput.current?.click()}
+          disabled={ocrBusy || submitting}
+        >
+          {ocrBusy ? "Reading…" : "📎 Upload receipt or invoice"}
+        </button>
+        {imagePreview && (
+          <div className="ocr-preview">
+            <img src={imagePreview} alt="Receipt preview" />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setImagePreview(null);
+                setImagePath(null);
+              }}
+            >Remove</button>
+          </div>
+        )}
+      </div>
+
       <FormField label="Direction">
         <div className="filter-group">
           <button

@@ -91,6 +91,13 @@ export interface OcrInvoiceResult {
   total_amount: number | null;
   notes: string | null;
   image_path: string;
+  // Present when type === "payment_slip"
+  payment_mode?: "cash" | "bank_deposit" | "gpay" | "upi" | "other" | null;
+  amount?: number | null;
+  transaction_ref?: string | null;
+  payment_date?: string | null;
+  payee_name?: string | null;
+  note?: string | null;
 }
 
 export interface Product {

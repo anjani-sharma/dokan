@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import get_db, require_token
+from src.products.service import upsert_product_by_name
 from src.sales.models import DailySale
 from src.sales.schemas import SaleCreate, SaleOut, SaleUpdate
 from src.stock.service import record_stock_movement, reverse_stock_movement
@@ -30,6 +31,17 @@ async def create_sale(body: SaleCreate, db: AsyncSession = Depends(get_db)):
     Record a sale. If the same product_id already has an entry for that date,
     the quantities are combined (upsert) rather than creating a duplicate row.
     """
+    # If the caller didn't supply a product_id but did give us a name,
+    # auto-create a placeholder product so the stock movement is recorded.
+    if not body.product_id and body.product_name_raw:
+        product = await upsert_product_by_name(
+            db,
+            body.product_name_raw,
+            default_cost=body.selling_price,
+        )
+        if product:
+            body.product_id = product.id
+
     # Upsert: check for existing record with same product_id + date
     if body.product_id:
         existing_result = await db.execute(

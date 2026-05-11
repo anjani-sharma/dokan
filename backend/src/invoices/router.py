@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from src.dependencies import get_db, require_token
 from src.invoices.models import PurchaseInvoice, PurchaseInvoiceItem
 from src.invoices.schemas import InvoiceCreate, InvoiceOut, InvoiceUpdate
+from src.products.service import upsert_product_by_name
 from src.settings import settings
 from src.stock.service import record_stock_movement
 
@@ -50,12 +51,28 @@ async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)
     await db.flush()  # get invoice.id before adding items
 
     for item_data in body.items:
-        item = PurchaseInvoiceItem(purchase_invoice_id=invoice.id, **item_data.model_dump())
+        # If the caller didn't supply a product_id (typical for OCR'd line
+        # items and bot-extracted ones), upsert a placeholder product by
+        # name so the stock movement is recorded against a real row.
+        product_id = item_data.product_id
+        if not product_id and item_data.product_name_raw:
+            product = await upsert_product_by_name(
+                db,
+                item_data.product_name_raw,
+                default_cost=item_data.unit_cost,
+            )
+            if product:
+                product_id = product.id
+
+        item = PurchaseInvoiceItem(
+            purchase_invoice_id=invoice.id,
+            **{**item_data.model_dump(), "product_id": product_id},
+        )
         db.add(item)
-        if item_data.product_id:
+        if product_id:
             await record_stock_movement(
                 db,
-                product_id=item_data.product_id,
+                product_id=product_id,
                 movement_type="purchase",
                 qty_change=item_data.qty,
                 reference_id=invoice.id,
