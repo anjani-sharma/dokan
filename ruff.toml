@@ -1,0 +1,18 @@
+# Project-wide ruff configuration. Applies to both backend/ and bot/.
+# The PostToolUse lint hook (.claude/hooks/lint-on-save.sh) and manual
+# `ruff check` invocations both read this file, so the rules are consistent.
+
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "alembic/versions",   # auto-generated migration files
+]
+
+[lint]
+# Narrow set — real errors only, no style nits. The codebase has existing
+# long lines and unconventional formatting that we don't want to mass-fix.
+#   F     = pyflakes  (undefined names, unused imports, unused variables)
+#   E7    = statement errors (bare except, comparison to None/True, etc.)
+#   E9    = syntax / runtime errors
+select = ["F", "E7", "E9"]

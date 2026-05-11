@@ -1,0 +1,44 @@
+# ── Local Claude Code tooling (agents, commands, hooks, rules, settings) ─────
+# Kept out of the deliverable — see CLAUDE.md for the human-readable architecture doc.
+.claude/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+.venv/
+venv/
+
+# ── Node / dashboard ─────────────────────────────────────────────────────────
+node_modules/
+dashboard/dist/
+npm-debug.log*
+yarn-error.log
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Editor / IDE ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Environment & secrets (.env.example stays tracked — explicit name) ───────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+
+# ── Bot runtime artifacts that occasionally leak into the repo root ──────────
+# (voice downloads default to /tmp; these patterns are defence-in-depth only)
+/ananta_images/
+/*.ogg
+/*.jpg
+/*.jpeg
