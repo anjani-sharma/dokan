@@ -48,7 +48,11 @@ async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)
         image_path=body.image_path,
     )
     db.add(invoice)
-    await db.flush()  # get invoice.id before adding items
+    try:
+        await db.flush()  # get invoice.id before adding items — also surfaces unique conflicts
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Invoice {body.invoice_number} already exists")
 
     for item_data in body.items:
         # If the caller didn't supply a product_id (typical for OCR'd line
