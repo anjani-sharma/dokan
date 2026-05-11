@@ -28,6 +28,11 @@ yarn-error.log
 *.swp
 *.swo
 
+# ── Playwright / test artifacts ──────────────────────────────────────────────
+.playwright-mcp/
+/pin-*.png
+/dokane-*.png
+
 # ── Environment & secrets (.env.example stays tracked — explicit name) ───────
 .env
 .env.local
