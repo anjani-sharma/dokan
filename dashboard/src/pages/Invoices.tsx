@@ -6,7 +6,8 @@ import FormField from "../components/FormField";
 import ProductPicker from "../components/ProductPicker";
 import {
   addInvoiceItem, deleteInvoice, deleteInvoiceItem, fetchDuplicateInvoiceClusters,
-  fetchInvoices, fmt, Invoice, InvoiceItemCreate, updateInvoice, updateInvoiceItem,
+  fetchInvoices, fetchSuppliers, fmt, Invoice, InvoiceItemCreate, Supplier,
+  updateInvoice, updateInvoiceItem,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 
@@ -267,11 +268,17 @@ function InvoiceEditForm({
   const toast = useToast();
   const [invNumber, setInvNumber] = useState(invoice.invoice_number);
   const [invDate, setInvDate] = useState(invoice.invoice_date);
+  const [supplierId, setSupplierId] = useState<number>(invoice.supplier_id);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [total, setTotal] = useState(String(invoice.total_amount));
   const [paid, setPaid] = useState(String(invoice.paid_amount));
   const [notes, setNotes] = useState(invoice.notes ?? "");
   const [savingHeader, setSavingHeader] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchSuppliers().then(setSuppliers).catch(() => undefined);
+  }, []);
 
   const saveHeader = async () => {
     setError(null);
@@ -279,6 +286,7 @@ function InvoiceEditForm({
     try {
       const updated = await updateInvoice(invoice.id, {
         invoice_number: invNumber.trim(),
+        supplier_id: supplierId,
         invoice_date: invDate,
         total_amount: Number(total) || 0,
         paid_amount: Number(paid) || 0,
@@ -315,6 +323,20 @@ function InvoiceEditForm({
           <input type="date" className="form-input" value={invDate} onChange={(e) => setInvDate(e.target.value)} />
         </FormField>
       </div>
+      <FormField label="Vendor">
+        <select
+          className="form-input"
+          value={String(supplierId)}
+          onChange={(e) => setSupplierId(Number(e.target.value))}
+        >
+          {suppliers.length === 0 && (
+            <option value={String(invoice.supplier_id)}>#{invoice.supplier_id}</option>
+          )}
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+      </FormField>
       <div className="form-grid form-grid-2">
         <FormField label="Total amount" hint="₹">
           <input
