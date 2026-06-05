@@ -17,7 +17,7 @@ import tempfile
 from datetime import date as date_type
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 
 from src.db import AsyncSessionLocal
 from src.imports.dedup import (
@@ -69,6 +69,33 @@ def _to_date(v) -> date_type | None:
         return None
 
 
+async def _reclassify_misrouted_jobs(db) -> None:
+    """Retroactively fix jobs whose `kind` disagrees with the OCR-detected
+    document type. Bridges rows processed before the trust-OCR change so
+    they stop opening the wrong review modal. Idempotent — touches zero
+    rows after the first sweep on a given DB.
+    """
+    swept = await db.execute(text(
+        """
+        UPDATE import_jobs
+           SET kind = CASE
+                 WHEN (extracted ->> 'type') = 'payment_slip' THEN 'payment'
+                 WHEN (extracted ->> 'type') = 'invoice'      THEN 'invoice'
+               END,
+               error = COALESCE(error || ' | ', '') || 'auto-reclassified by OCR'
+         WHERE status IN ('needs_review', 'duplicate', 'failed')
+           AND extracted IS NOT NULL
+           AND (
+                (kind = 'invoice' AND (extracted ->> 'type') = 'payment_slip')
+             OR (kind = 'payment' AND (extracted ->> 'type') = 'invoice')
+           )
+        """
+    ))
+    if swept.rowcount:
+        logger.info("import_worker reclassified %d misrouted job(s)", swept.rowcount)
+        await db.commit()
+
+
 async def drain_import_queue() -> None:
     """Drain up to BATCH_LIMIT pending jobs.
 
@@ -78,6 +105,9 @@ async def drain_import_queue() -> None:
     UPDATE finds no rows because the first locked them with SKIP LOCKED.
     """
     async with AsyncSessionLocal() as db:
+        # One-shot backfill (no-op after the first sweep on this DB).
+        await _reclassify_misrouted_jobs(db)
+
         claim_ids = (
             select(ImportJob.id)
             .where(ImportJob.status == "pending")
