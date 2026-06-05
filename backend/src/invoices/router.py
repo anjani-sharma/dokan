@@ -71,6 +71,9 @@ async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)
     except DuplicateInvoiceNumber:
         raise HTTPException(status_code=409, detail=f"Invoice {body.invoice_number} already exists")
     await db.commit()
+    # commit + an identity-mapped instance can leave items unloaded for
+    # the response serializer even after selectinload — refresh forces it.
+    await db.refresh(invoice, attribute_names=["items"])
     return invoice
 
 
@@ -100,15 +103,11 @@ async def update_invoice(invoice_id: int, body: InvoiceUpdate, db: AsyncSession 
     elif invoice.paid_amount > 0:
         invoice.status = "partial"
     await db.commit()
-    # Re-fetch with items eagerly loaded — InvoiceOut serializes them and a
-    # bare db.refresh would trigger a lazy load on the closed session
-    # (MissingGreenlet in async context).
-    result = await db.execute(
-        select(PurchaseInvoice)
-        .options(selectinload(PurchaseInvoice.items))
-        .where(PurchaseInvoice.id == invoice_id)
-    )
-    return result.scalar_one()
+    # Force-load items on the in-session instance. A bare refresh without
+    # attribute_names skips relationships; a re-select can hit the same
+    # identity-map instance and leave items unloaded.
+    await db.refresh(invoice, attribute_names=["items"])
+    return invoice
 
 
 @router.delete("/{invoice_id}", status_code=204, dependencies=[Depends(require_token)])
