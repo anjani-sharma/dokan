@@ -152,12 +152,15 @@ async def _process_job(db, job: ImportJob) -> None:
         await db.commit()
         return
 
-    # Job kind ≠ OCR'd type — keep the user's intent (they uploaded under
-    # "Invoices") but surface a note in `error` so the review UI can warn.
-    if doc_type != job.kind and not (
-        doc_type == "payment_slip" and job.kind == "payment"
-    ):
-        job.error = f"OCR classified as {doc_type}, queued as {job.kind}"
+    # Trust the OCR over the upload tab: if the user drag-dropped a payment
+    # slip into the Invoices tab (common in practice — bulk batches are
+    # mixed), reclassify the job so the right service handles it and the
+    # right review modal opens. User can still override fields after.
+    ocr_kind = "payment" if doc_type == "payment_slip" else doc_type
+    if ocr_kind in ("invoice", "payment") and ocr_kind != job.kind:
+        old_kind = job.kind
+        job.kind = ocr_kind
+        job.error = f"Reclassified from {old_kind} to {ocr_kind} by OCR"
 
     if job.kind == "invoice":
         await _finish_invoice(db, job, extracted)
