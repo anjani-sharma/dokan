@@ -100,8 +100,15 @@ async def update_invoice(invoice_id: int, body: InvoiceUpdate, db: AsyncSession 
     elif invoice.paid_amount > 0:
         invoice.status = "partial"
     await db.commit()
-    await db.refresh(invoice)
-    return invoice
+    # Re-fetch with items eagerly loaded — InvoiceOut serializes them and a
+    # bare db.refresh would trigger a lazy load on the closed session
+    # (MissingGreenlet in async context).
+    result = await db.execute(
+        select(PurchaseInvoice)
+        .options(selectinload(PurchaseInvoice.items))
+        .where(PurchaseInvoice.id == invoice_id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/{invoice_id}", status_code=204, dependencies=[Depends(require_token)])
