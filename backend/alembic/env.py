@@ -1,4 +1,6 @@
 import asyncio
+import re
+import ssl
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -15,6 +17,29 @@ if config.config_file_name is not None:
 # Import settings — URL is used directly (bypasses configparser % escaping issues)
 from src.settings import settings  # noqa: E402
 
+
+def _normalize_async_url(raw: str) -> str:
+    """Mirror src.db's URL handling so Alembic runs against the same engine
+    config as the app. Render's connectionString is `postgresql://…` with no
+    driver suffix — create_async_engine needs `+asyncpg`. Supabase/Neon URLs
+    include `sslmode`/`channel_binding` query params asyncpg rejects.
+    """
+    url = raw
+    if url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+    elif url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url[len("postgres://"):]
+    url = re.sub(r"[?&](sslmode|channel_binding)=[^&]*", "", url).rstrip("?&")
+    return url
+
+
+_DB_URL = _normalize_async_url(settings.database_url)
+_SSL_CTX = (
+    ssl.create_default_context()
+    if "neon.tech" in _DB_URL or "supabase" in _DB_URL
+    else None
+)
+
 # Import Base and all models so autogenerate can see every table
 from src.db import Base  # noqa: E402
 from src.products.models import Supplier, Product  # noqa: E402, F401
@@ -29,7 +54,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.database_url,
+        url=_DB_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -45,10 +70,10 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    # Create engine directly from settings — avoids configparser choking on % in passwords
     connectable = create_async_engine(
-        settings.database_url,
+        _DB_URL,
         poolclass=pool.NullPool,
+        connect_args={"ssl": _SSL_CTX} if _SSL_CTX else {},
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
