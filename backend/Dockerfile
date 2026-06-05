@@ -14,4 +14,9 @@ COPY bot /app/bot
 
 WORKDIR /app/backend
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# start.sh runs Alembic migrations (bootstrapping alembic_version on first
+# deploy if the DB was originally seeded by create_all) and then execs
+# uvicorn. Going through CMD ["uvicorn", ...] directly skips migrations,
+# leaving the DB stuck on the create_all schema.
+RUN chmod +x start.sh
+CMD ["bash", "start.sh"]
