@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import {
-  fetchInvoices, fetchSupplierLedger, fetchSupplierSummaries, fmt,
-  Invoice, mergeSupplier, SupplierLedger, SupplierSummary, updateSupplier, upsertSupplier,
+  fetchInvoices, fetchSuppliers, fetchSupplierLedger, fetchSupplierSummaries, fmt,
+  Invoice, mergeSupplier, Supplier, SupplierLedger, SupplierSummary,
+  updateInvoice, updateSupplier, upsertSupplier,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import FormField from "../components/FormField";
@@ -335,6 +336,8 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
   const [showPayment, setShowPayment] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [movingInvoiceId, setMovingInvoiceId] = useState<number | null>(null);
+  const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]);
 
   const load = () => {
     setLoading(true);
@@ -342,6 +345,9 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
   };
 
   useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    fetchSuppliers().then(setAllSuppliers).catch(() => undefined);
+  }, []);
 
   return (
     <Modal open onClose={onClose} title={ledger?.supplier_name ?? "Supplier"} wide>
@@ -389,6 +395,7 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
                     <th>Invoiced</th>
                     <th>Paid</th>
                     <th>Balance</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -404,6 +411,17 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
                       <td className="text-red">{e.debit > 0 ? fmt(e.debit) : ""}</td>
                       <td className="text-green">{e.credit > 0 ? fmt(e.credit) : ""}</td>
                       <td className="bold">{fmt(e.running_balance)}</td>
+                      <td>
+                        {e.entry_type === "invoice" && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setMovingInvoiceId(e.source_id)}
+                            title="Reassign this invoice to a different vendor"
+                          >
+                            Move
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -455,9 +473,86 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
               />
             </Modal>
           )}
+
+          {movingInvoiceId != null && (
+            <Modal
+              open
+              onClose={() => setMovingInvoiceId(null)}
+              title={`Move invoice #${movingInvoiceId} to a different vendor`}
+            >
+              <MoveInvoiceForm
+                invoiceId={movingInvoiceId}
+                currentSupplierId={id}
+                allSuppliers={allSuppliers}
+                onCancel={() => setMovingInvoiceId(null)}
+                onMoved={() => {
+                  setMovingInvoiceId(null);
+                  toast.push({ kind: "success", title: "Invoice moved" });
+                  load();
+                  onChanged();
+                }}
+              />
+            </Modal>
+          )}
         </>
       )}
     </Modal>
+  );
+}
+
+function MoveInvoiceForm({
+  invoiceId, currentSupplierId, allSuppliers, onCancel, onMoved,
+}: {
+  invoiceId: number;
+  currentSupplierId: number;
+  allSuppliers: Supplier[];
+  onCancel: () => void;
+  onMoved: () => void;
+}) {
+  const [targetId, setTargetId] = useState<number | "">("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const targets = allSuppliers.filter((s) => s.id !== currentSupplierId);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!targetId) { setError("Pick a target vendor."); return; }
+    setBusy(true);
+    try {
+      await updateInvoice(invoiceId, { supplier_id: Number(targetId) });
+      onMoved();
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Could not move invoice.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-grid">
+      <FormField label="Move to vendor">
+        <select
+          className="form-input"
+          value={targetId === "" ? "" : String(targetId)}
+          onChange={(e) => setTargetId(e.target.value === "" ? "" : Number(e.target.value))}
+          required
+        >
+          <option value="">— pick vendor —</option>
+          {targets.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </FormField>
+      {error && <div className="form-error">{error}</div>}
+      <div className="form-actions">
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? "Moving…" : "Move invoice"}
+        </button>
+      </div>
+    </form>
   );
 }
 
