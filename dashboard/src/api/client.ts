@@ -747,8 +747,11 @@ export const getImport = (id: number): Promise<ImportJob> =>
 export const commitImport = (
   id: number,
   body: Record<string, unknown>,
+  opts?: { force?: boolean },
 ): Promise<{ job_id: number; status: string; invoice_id?: number; payment_id?: number }> =>
-  api.post(`/imports/${id}/commit`, body).then((r) => r.data);
+  api.post(`/imports/${id}/commit`, body, {
+    params: opts?.force ? { force: true } : undefined,
+  }).then((r) => r.data);
 
 export const discardImport = (id: number): Promise<void> =>
   api.post(`/imports/${id}/discard`).then(() => undefined);

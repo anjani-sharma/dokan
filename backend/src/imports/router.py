@@ -22,6 +22,7 @@ from src.dependencies import get_db, require_token
 from src.imports.models import ImportJob
 from src.imports.schemas import CommitResponse, ImportJobOut, UploadResponse
 from src.imports.service import (
+    DuplicateInvoiceDetected,
     commit_invoice_job,
     commit_payment_job,
     discard_job,
@@ -134,10 +135,17 @@ async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
 async def commit(
     job_id: int,
     body: dict[str, Any],
+    force: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """Accept user-edited extracted data and post it through the regular
-    invoice/payment create path. Body shape depends on `job.kind`."""
+    invoice/payment create path. Body shape depends on `job.kind`.
+
+    Re-runs duplicate detection at commit time. If a match is found the
+    response is 409 with `existing_invoice_id` so the dashboard can show
+    the user the original. `?force=true` bypasses the check for an
+    explicit "post anyway".
+    """
     job = await db.get(ImportJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Import job not found")
@@ -150,7 +158,20 @@ async def commit(
         except ValidationError as e:
             raise HTTPException(status_code=422, detail=e.errors())
         try:
-            invoice_id = await commit_invoice_job(db, job, payload)
+            invoice_id = await commit_invoice_job(db, job, payload, force=force)
+        except DuplicateInvoiceDetected as e:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "reason": "duplicate",
+                    "existing_invoice_id": e.existing_id,
+                    "message": (
+                        f"Matches existing invoice #{e.existing_id} "
+                        f"(same supplier, date, and total). "
+                        f"Re-submit with ?force=true to post anyway."
+                    ),
+                },
+            )
         except DuplicateInvoiceNumber:
             raise HTTPException(status_code=409, detail=f"Invoice {payload.invoice_number} already exists")
         return CommitResponse(job_id=job.id, status="posted", invoice_id=invoice_id)

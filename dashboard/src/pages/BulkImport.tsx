@@ -405,7 +405,24 @@ function ReviewModal({ job, suppliers, onClose, onPosted, onDiscarded }: ReviewP
               unit_cost: Number(it.unit_cost) || 0,
             })),
         };
-        await commitImport(job.id, body);
+        try {
+          await commitImport(job.id, body);
+        } catch (err: unknown) {
+          const r = (err as { response?: { status?: number; data?: { detail?: unknown } } }).response;
+          const detail = r?.data?.detail;
+          const isDup =
+            r?.status === 409 &&
+            typeof detail === "object" &&
+            detail !== null &&
+            (detail as { reason?: string }).reason === "duplicate";
+          if (!isDup) throw err;
+          const existing = (detail as { existing_invoice_id: number }).existing_invoice_id;
+          if (!confirm(
+            `This looks like a duplicate of invoice #${existing} ` +
+            `(same supplier, date, and total). Post anyway?`,
+          )) return;
+          await commitImport(job.id, body, { force: true });
+        }
         toast.push({ kind: "success", title: "Invoice posted", body: `Job #${job.id}` });
       } else {
         if (direction === "outflow" && !paymentSupplierId) {

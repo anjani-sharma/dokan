@@ -12,7 +12,11 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.imports.dedup import compute_invoice_fingerprint, compute_payment_fingerprint
+from src.imports.dedup import (
+    compute_invoice_fingerprint,
+    compute_payment_fingerprint,
+    find_duplicate_invoice,
+)
 from src.imports.models import ImportJob
 from src.invoices.schemas import InvoiceCreate
 from src.invoices.service import DuplicateInvoiceNumber, create_invoice as create_invoice_service
@@ -84,10 +88,22 @@ async def queue_file(
     return job
 
 
+class DuplicateInvoiceDetected(Exception):
+    """Raised when commit_invoice_job detects an existing invoice that matches
+    by pHash, content fingerprint, or (supplier, date, total). Carries the id
+    of the existing row so the router can hand it to the user."""
+
+    def __init__(self, existing_id: int):
+        super().__init__(f"Duplicate of invoice #{existing_id}")
+        self.existing_id = existing_id
+
+
 async def commit_invoice_job(
     db: AsyncSession,
     job: ImportJob,
     body: InvoiceCreate,
+    *,
+    force: bool = False,
 ) -> int:
     """Run the user-confirmed invoice through the regular create path.
 
@@ -96,6 +112,12 @@ async def commit_invoice_job(
     invoice with a `needs_review` job. The unique-invoice-number check uses
     a savepoint inside `create_invoice_service`, so on DuplicateInvoiceNumber
     we can still record the failure on the job and commit it.
+
+    Re-runs the duplicate check at commit time (not just during OCR in the
+    worker): the dashboard auto-generates an invoice_number when OCR
+    couldn't read one, which bypasses the column UNIQUE constraint, so
+    (supplier, date, total) is the only signal that catches two uploads of
+    the same bill. `force=True` lets the user explicitly post anyway.
     """
     fp = compute_invoice_fingerprint(
         body.supplier_id,
@@ -103,6 +125,19 @@ async def commit_invoice_job(
         body.total_amount,
         [item.model_dump() for item in body.items],
     )
+
+    if not force:
+        dup = await find_duplicate_invoice(
+            db, job.image_phash, fp, body.total_amount,
+            supplier_id=body.supplier_id, invoice_date=body.invoice_date,
+        )
+        if dup is not None:
+            job.status = "duplicate"
+            job.dup_of_invoice_id = dup.id
+            job.error = f"Matches existing invoice #{dup.id}"
+            await db.commit()
+            raise DuplicateInvoiceDetected(dup.id)
+
     try:
         invoice = await create_invoice_service(
             db,
