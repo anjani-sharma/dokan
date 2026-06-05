@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  deleteSupplier, fetchInvoices, fetchSuppliers, fetchSupplierLedger, fetchSupplierSummaries,
-  fmt, Invoice, mergeSupplier, Supplier, SupplierLedger, SupplierSummary,
-  updateInvoice, updateSupplier, upsertSupplier,
+  deleteInvoice, deletePayment, deleteSupplier, fetchInvoices, fetchSuppliers,
+  fetchSupplierLedger, fetchSupplierSummaries, fmt, Invoice, mergeSupplier,
+  Supplier, SupplierLedger, SupplierSummary, updateInvoice, updateSupplier,
+  upsertSupplier,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import FormField from "../components/FormField";
@@ -436,7 +437,7 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
                       <td className="text-red">{e.debit > 0 ? fmt(e.debit) : ""}</td>
                       <td className="text-green">{e.credit > 0 ? fmt(e.credit) : ""}</td>
                       <td className="bold">{fmt(e.running_balance)}</td>
-                      <td>
+                      <td style={{ whiteSpace: "nowrap" }}>
                         {e.entry_type === "invoice" && (
                           <button
                             className="btn btn-ghost btn-sm"
@@ -446,6 +447,30 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
                             Move
                           </button>
                         )}
+                        <button
+                          className="btn btn-ghost btn-sm text-red"
+                          onClick={async () => {
+                            const label = e.entry_type === "invoice"
+                              ? "invoice (stock movements will be reversed)"
+                              : "payment";
+                            if (!confirm(`Delete this ${label}?`)) return;
+                            try {
+                              if (e.entry_type === "invoice") {
+                                await deleteInvoice(e.source_id);
+                              } else {
+                                await deletePayment(e.source_id);
+                              }
+                              toast.push({ kind: "success", title: `${e.entry_type[0].toUpperCase()}${e.entry_type.slice(1)} deleted` });
+                              load();
+                              onChanged();
+                            } catch (err) {
+                              const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                              toast.push({ kind: "error", title: "Delete failed", body: msg ?? "" });
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
                       </td>
                     </tr>
                   ))}

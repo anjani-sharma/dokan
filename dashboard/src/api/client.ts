@@ -622,6 +622,14 @@ export const mergeSupplier = (sourceId: number, targetId: number): Promise<Merge
 export const deleteSupplier = (id: number): Promise<void> =>
   api.delete(`/products/suppliers/${id}`).then(() => undefined);
 
+export const deletePayment = (id: number): Promise<void> =>
+  api.delete(`/payments/${id}`).then(() => undefined);
+
+export const fetchDuplicatePaymentClusters = (): Promise<Payment[][]> =>
+  api.get("/payments/duplicates").then(r =>
+    (r.data as Payment[][]).map(group => group.map(coercePayment))
+  );
+
 export const ocrInvoiceUpload = (file: File): Promise<OcrInvoiceResult> => {
   const fd = new FormData();
   fd.append("file", file);
