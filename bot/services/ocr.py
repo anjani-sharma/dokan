@@ -108,7 +108,10 @@ def ocr_document(image_path: str) -> dict:
         image_data, media_type = _encode_image(image_path)
         msg = _client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1024,
+            # 4096 fits a long itemized invoice (~40 lines) without truncation.
+            # 1024 was clipping JSON mid-token on real shop bills, so the parser
+            # then failed with "Could not extract JSON from response".
+            max_tokens=4096,
             messages=[
                 {
                     "role": "user",
@@ -126,13 +129,21 @@ def ocr_document(image_path: str) -> dict:
                 }
             ],
         )
-        result = parse_json_response(msg.content[0].text)
-        result.setdefault("type", "unknown")
-        result.setdefault("confidence", "low")
-        if result["type"] == "invoice":
-            result.setdefault("items", [])
-            result["items"] = [i for i in result["items"] if i.get("product_name")]
-        return result
+        parsed = parse_json_response(msg.content[0].text)
+        # Claude occasionally returns a top-level JSON array instead of an
+        # object (e.g. just the items list). Don't crash — treat as unknown.
+        if not isinstance(parsed, dict):
+            return {"type": "unknown", "confidence": "low",
+                    "raw_response": str(parsed)[:500]}
+        parsed.setdefault("type", "unknown")
+        parsed.setdefault("confidence", "low")
+        if parsed["type"] == "invoice":
+            parsed.setdefault("items", [])
+            parsed["items"] = [
+                i for i in parsed["items"]
+                if isinstance(i, dict) and i.get("product_name")
+            ]
+        return parsed
 
     return with_retry(_call, retries=2)
 
