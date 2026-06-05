@@ -14,6 +14,9 @@ class Supplier(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20))
     address: Mapped[str | None] = mapped_column(Text)
+    # Set when a supplier was auto-created from OCR (vs. user-entered). Lets
+    # the dashboard surface a "review / merge" affordance later.
+    auto_created: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     products: Mapped[list["Product"]] = relationship(back_populates="supplier")

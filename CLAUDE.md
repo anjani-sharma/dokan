@@ -13,14 +13,17 @@ business-logic API → PostgreSQL → scheduled daily/weekly Telegram reports + 
 Three independent deployables share one repo:
 
 - `backend/` — FastAPI (`src/main.py`) + SQLAlchemy async + APScheduler. Per-domain packages:
-  `products/`, `invoices/`, `sales/`, `payments/`, `stock/`, `reports/` each contain
+  `products/`, `invoices/`, `sales/`, `payments/`, `stock/`, `reports/`, `imports/` each contain
   `models.py + schemas.py + router.py` (and `service.py` where there is shared logic).
   `src/bot/` is a thin webhook adapter — see deployment notes below.
+  `src/shared/storage.py` is the R2-or-local file uploader (used by both `/invoices/ocr` and the
+  bulk-import worker — replaces the old `sys.path` hack that pulled `bot/services/storage.py`).
 - `bot/` — standalone Telegram bot (`bot/main.py`) used in Docker/polling mode. Handlers in
   `bot/handlers/{voice,photo,text}.py`, AI services in `bot/services/{ocr,nlp,transcriber}.py`,
-  HTTP-to-backend client in `bot/services/api_client.py`, R2 fallback in `bot/services/storage.py`.
-- `dashboard/` — Vite + React + TypeScript SPA, four pages (Dashboard/Invoices/Stock/Payments).
-  Charts use Recharts 3.8.1.
+  HTTP-to-backend client in `bot/services/api_client.py`. Note: `bot/services/storage.py` still
+  exists for the polling-mode container; keep it in sync with `backend/src/shared/storage.py`.
+- `dashboard/` — Vite + React + TypeScript SPA. Pages: Dashboard, Sales, Customers, Suppliers,
+  Invoices, Stock, Payments, Bulk Import, Analytics. Charts use Recharts 3.8.1.
 
 ## Two deployment modes (don't conflate them)
 
@@ -96,6 +99,31 @@ docker compose exec backend python seed_demo.py            # 14 days demo data
 docker compose exec backend python seed_demo.py --clear    # wipe before client handover
 ```
 
+## Bulk import (invoices + payments)
+
+`backend/src/imports/` owns the queue-based bulk-import flow used by the
+dashboard's `/import` page.
+
+- **Upload**: `POST /imports/upload` (multipart, N files + `kind` form field). Files are
+  saved via `shared/storage.upload_image` and recorded as `import_jobs` rows with
+  `status="pending"`. CSV alternative for payments: `POST /imports/upload/csv`.
+- **Worker**: `imports/worker.py::drain_import_queue` is registered on the same
+  `AsyncIOScheduler` as the daily/weekly reports (interval=30s, `max_instances=1`).
+  Picks up to 5 pending rows per tick, runs pHash → OCR → fingerprint → dup check.
+- **Dedup**: two layers (see `imports/dedup.py`) — exact pHash match, then content
+  fingerprint `(supplier_id, invoice_date, round(total), sorted item-set)` with ±1%
+  total tolerance. Threshold and rationale: `BULK_IMPORT_PLAN.md` §0 D5.
+- **Commit**: `POST /imports/{id}/commit` routes through `invoices/service.py::create_invoice`
+  or `payments/service.py::create_payment` — the same code the HTTP `POST /invoices` and
+  `POST /payments` routes use. Stock movements happen via the regular path; the 409 contract
+  on `invoice_number` is preserved.
+- **Suppliers auto-create**: OCR'd vendor names that don't match an existing supplier are
+  created with `auto_created=true` (new column on `suppliers`). The dashboard can surface
+  these for later manual merge.
+- Deps: `ImageHash==4.3.2`, `pypdfium2==4.30.0` (PDF first-page render).
+
+Full design + open decisions: see `BULK_IMPORT_PLAN.md` at repo root.
+
 ## Database & money handling
 
 - All money columns are `NUMERIC(12,2)` / `NUMERIC(14,2)`; quantities are `NUMERIC(12,3)`.
@@ -160,3 +188,4 @@ These aren't auto-loaded — read the relevant one when you're about to edit cod
 - `.claude/rules/api.md` — FastAPI routing/session/error conventions, single-tenant model, CORS.
 - `.claude/rules/database.md` — column types, `NUMERIC` for money, GENERATED columns, migration policy, stock-service rule.
 - `.claude/rules/frontend.md` — dashboard stack, `toNum` coercion, Recharts gotchas, no state lib / no CSS framework.
+- `BULK_IMPORT_PLAN.md` — bulk-import phased plan + dedup design + DO migration notes.

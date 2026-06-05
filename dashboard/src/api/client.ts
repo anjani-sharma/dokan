@@ -672,3 +672,68 @@ export const triggerDailyReport = (): Promise<void> =>
 
 export const triggerWeeklyReport = (): Promise<void> =>
   api.post("/reports/trigger/weekly").then(() => undefined);
+
+// ── Bulk import ────────────────────────────────────────────────────────────
+
+export type ImportJobStatus =
+  | "pending" | "extracting" | "needs_review" | "duplicate"
+  | "posted" | "failed";
+
+export interface ImportJob {
+  id: number;
+  kind: "invoice" | "payment";
+  status: ImportJobStatus;
+  source_path: string;
+  original_filename: string | null;
+  mime_type: string | null;
+  image_phash: string | null;
+  content_fingerprint: string | null;
+  extracted: Record<string, unknown> | null;
+  dup_of_invoice_id: number | null;
+  dup_of_payment_id: number | null;
+  posted_invoice_id: number | null;
+  posted_payment_id: number | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const uploadImports = (
+  files: File[],
+  kind: "invoice" | "payment",
+): Promise<{ job_ids: number[]; queued: number }> => {
+  const fd = new FormData();
+  fd.append("kind", kind);
+  files.forEach((f) => fd.append("files", f));
+  return api.post("/imports/upload", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+};
+
+export const listImports = (params?: {
+  status?: ImportJobStatus;
+  kind?: "invoice" | "payment";
+}): Promise<ImportJob[]> =>
+  api.get("/imports", { params }).then((r) => r.data);
+
+export const getImport = (id: number): Promise<ImportJob> =>
+  api.get(`/imports/${id}`).then((r) => r.data);
+
+export const commitImport = (
+  id: number,
+  body: Record<string, unknown>,
+): Promise<{ job_id: number; status: string; invoice_id?: number; payment_id?: number }> =>
+  api.post(`/imports/${id}/commit`, body).then((r) => r.data);
+
+export const discardImport = (id: number): Promise<void> =>
+  api.post(`/imports/${id}/discard`).then(() => undefined);
+
+export const uploadPaymentsCsv = (
+  file: File,
+): Promise<{ job_ids: number[]; queued: number }> => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.post("/imports/upload/csv", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+};

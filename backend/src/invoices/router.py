@@ -4,7 +4,6 @@ import sys
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +13,7 @@ from src.invoices.models import PurchaseInvoice, PurchaseInvoiceItem
 from src.invoices.schemas import (
     InvoiceCreate, InvoiceItemCreate, InvoiceOut, InvoiceUpdate,
 )
+from src.invoices.service import DuplicateInvoiceNumber, create_invoice as create_invoice_service
 from src.products.service import upsert_product_by_name
 from src.settings import settings
 from src.stock.service import record_stock_movement, reverse_stock_movement
@@ -41,62 +41,12 @@ async def list_invoices(
 
 @router.post("", response_model=InvoiceOut, status_code=201, dependencies=[Depends(require_token)])
 async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)):
-    invoice = PurchaseInvoice(
-        invoice_number=body.invoice_number,
-        supplier_id=body.supplier_id,
-        invoice_date=body.invoice_date,
-        total_amount=body.total_amount,
-        notes=body.notes,
-        image_path=body.image_path,
-    )
-    db.add(invoice)
     try:
-        await db.flush()  # get invoice.id before adding items — also surfaces unique conflicts
-    except IntegrityError:
-        await db.rollback()
+        invoice = await create_invoice_service(db, body)
+    except DuplicateInvoiceNumber:
         raise HTTPException(status_code=409, detail=f"Invoice {body.invoice_number} already exists")
-
-    for item_data in body.items:
-        # If the caller didn't supply a product_id (typical for OCR'd line
-        # items and bot-extracted ones), upsert a placeholder product by
-        # name so the stock movement is recorded against a real row.
-        product_id = item_data.product_id
-        if not product_id and item_data.product_name_raw:
-            product = await upsert_product_by_name(
-                db,
-                item_data.product_name_raw,
-                default_cost=item_data.unit_cost,
-            )
-            if product:
-                product_id = product.id
-
-        item = PurchaseInvoiceItem(
-            purchase_invoice_id=invoice.id,
-            **{**item_data.model_dump(), "product_id": product_id},
-        )
-        db.add(item)
-        if product_id:
-            await record_stock_movement(
-                db,
-                product_id=product_id,
-                movement_type="purchase",
-                qty_change=item_data.qty,
-                reference_id=invoice.id,
-                reference_type="purchase_invoice",
-            )
-
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail=f"Invoice {body.invoice_number} already exists")
-    await db.refresh(invoice)
-    result = await db.execute(
-        select(PurchaseInvoice)
-        .options(selectinload(PurchaseInvoice.items))
-        .where(PurchaseInvoice.id == invoice.id)
-    )
-    return result.scalar_one()
+    await db.commit()
+    return invoice
 
 
 @router.get("/{invoice_id}", response_model=InvoiceOut)

@@ -3,6 +3,7 @@ import MobileTopBar from "./components/MobileTopBar";
 import QuickAddFab from "./components/QuickAddFab";
 import Sidebar from "./components/Sidebar";
 import Analytics from "./pages/Analytics";
+import BulkImport from "./pages/BulkImport";
 import Customers from "./pages/Customers";
 import Dashboard from "./pages/Dashboard";
 import Invoices from "./pages/Invoices";
@@ -31,6 +32,7 @@ export default function App() {
                   <Route path="/invoices"   element={<Invoices />} />
                   <Route path="/stock"      element={<Stock />} />
                   <Route path="/payments"   element={<Payments />} />
+                  <Route path="/import"     element={<BulkImport />} />
                   <Route path="/analytics"  element={<Analytics />} />
                   <Route path="*"           element={<Navigate to="/" replace />} />
                 </Routes>

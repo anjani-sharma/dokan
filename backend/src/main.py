@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,6 +19,7 @@ from src.bot.router import router as bot_router
 from src.auth.router import router as auth_router
 from src.customers.router import router as customers_router
 from src.voice.router import router as voice_router
+from src.imports.router import router as imports_router
 
 logger = logging.getLogger(__name__)
 IST = pytz.timezone(settings.timezone)
@@ -34,6 +36,7 @@ async def lifespan(app: FastAPI):
     import src.stock.models      # noqa: F401
     import src.payments.models   # noqa: F401
     import src.customers.models  # noqa: F401
+    import src.imports.models    # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified/created")
@@ -50,6 +53,19 @@ async def lifespan(app: FastAPI):
         CronTrigger(day_of_week="mon", hour=9, minute=0, timezone=IST),
         id="weekly_report", replace_existing=True,
     )
+
+    # Bulk-import queue drain — picks up pending uploads every 30s and
+    # runs OCR + dedup. max_instances=1 so a slow batch doesn't pile up.
+    from src.imports.worker import drain_import_queue
+    scheduler.add_job(
+        drain_import_queue,
+        IntervalTrigger(seconds=30),
+        id="drain_import_queue",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
     scheduler.start()
 
     # ── Telegram webhook ─────────────────────────────────────────────────────
@@ -87,6 +103,7 @@ app.include_router(stock_router,     prefix="/stock",     tags=["stock"])
 app.include_router(reports_router,   prefix="/reports",   tags=["reports"])
 app.include_router(bot_router,       prefix="/bot",       tags=["bot"])
 app.include_router(voice_router,     prefix="/voice",     tags=["voice"])
+app.include_router(imports_router,   prefix="/imports",   tags=["imports"])
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

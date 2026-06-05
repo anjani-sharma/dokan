@@ -1,0 +1,4 @@
+date,amount,mode,direction,ref,note,supplier_name,customer_name
+2026-05-15,2500.00,upi,outflow,TXN12345,Wire purchase,Bharat Electricals,
+2026-05-16,800.00,cash,inflow,,Customer payment,,Ramesh Kumar
+2026-05-17,5000.00,bank_deposit,outflow,NEFT9988,May invoice,Mahaveer Wires,

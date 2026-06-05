@@ -22,6 +22,7 @@ from src.invoices.models import PurchaseInvoice, PurchaseInvoiceItem  # noqa: E4
 from src.sales.models import DailySale  # noqa: E402, F401
 from src.stock.models import StockMovement  # noqa: E402, F401
 from src.payments.models import Payment  # noqa: E402, F401
+from src.imports.models import ImportJob  # noqa: E402, F401
 
 target_metadata = Base.metadata
 

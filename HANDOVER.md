@@ -145,6 +145,31 @@ Open Telegram, message your bot:
 
 Open the dashboard: `http://YOUR_DROPLET_IP`
 
+Also test the **Bulk import** page (`/import`):
+- Drop 3-4 invoice photos. They appear as "Pending", flip to "Reading" within ~30s, then
+  to "Needs review" (or "Duplicate" if you uploaded the same picture twice).
+- Click **Review** on a row, confirm the OCR'd fields, click **Post**. The invoice
+  appears on `/invoices` with stock movements applied via the regular path.
+- For payments: switch the page to "Payments", either drop UPI screenshots or upload the
+  CSV template (`/payments-template.csv`).
+
+---
+
+## Bulk import notes
+
+The feature relies on a background worker that runs every 30 seconds inside the backend
+container (via APScheduler). No separate process is needed — it's the same dyno.
+
+- **Migrations**: `deploy.sh` runs `alembic upgrade head`. The bulk-import tables and
+  columns ship in revision `0003_bulk_import`. If you deploy without running Alembic, the
+  feature will 500 because `import_jobs` won't exist.
+- **PDF support**: added via `pypdfium2` (Apache-licensed, pip-only, no system deps). Bundled
+  in `backend/requirements.txt`. The Docker image build picks it up automatically.
+- **Cost telemetry**: each OCR call logs `ocr_call job=... bytes=... tokens_est=...` so you
+  can `docker compose logs backend | grep ocr_call` to spot-check Anthropic spend.
+- **Storage**: uploaded files go to R2 if configured (see env vars below); otherwise they
+  live on the `uploads` volume and survive restarts.
+
 ---
 
 ## Client Handover — Swapping Details (5 minutes)

@@ -25,6 +25,7 @@ class Payment(Base):
     transaction_ref: Mapped[str | None] = mapped_column(String(100))
     image_path: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     purchase_invoice: Mapped["PurchaseInvoice | None"] = relationship(back_populates="payments")

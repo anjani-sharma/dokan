@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { clearToken } from "../api/client";
 import {
   IconBox, IconBuilding, IconCart, IconChart, IconDashboard, IconFile,
-  IconLogout, IconUsers,
+  IconLogout, IconUpload, IconUsers,
 } from "./Icons";
 
 // Configurable shop label shown under the logo. Hardcoded for now —
@@ -16,6 +16,7 @@ const links = [
   { to: "/suppliers",  label: "Vendors",    icon: IconBuilding },
   { to: "/stock",      label: "Products",   icon: IconBox },
   { to: "/payments",   label: "Payments",   icon: IconFile },
+  { to: "/import",     label: "Bulk Import", icon: IconUpload },
   { to: "/analytics",  label: "Analytics",  icon: IconChart },
 ];
 

@@ -20,6 +20,8 @@ class PurchaseInvoice(Base):
     image_path: Mapped[str | None] = mapped_column(Text)
     raw_ocr_text: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    image_phash: Mapped[str | None] = mapped_column(String(16), index=True)
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     supplier: Mapped["Supplier"] = relationship(back_populates="invoices")

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.dependencies import get_db, require_token
 from src.payments.models import Payment
 from src.payments.schemas import PaymentCreate, PaymentOut
+from src.payments.service import create_payment as create_payment_service
 
 router = APIRouter()
 
@@ -31,30 +32,8 @@ async def list_payments(
 
 @router.post("", response_model=PaymentOut, status_code=201, dependencies=[Depends(require_token)])
 async def create_payment(body: PaymentCreate, db: AsyncSession = Depends(get_db)):
-    payment = Payment(**body.model_dump())
-    db.add(payment)
-
-    # Legacy: if the user explicitly tied the payment to one invoice (and
-    # not a supplier), still bump that invoice's paid_amount so the per-
-    # invoice "paid" badge stays meaningful. New supplier-level payments
-    # leave individual invoices alone — the supplier ledger is the source
-    # of truth for "what we owe".
-    if (
-        body.direction == "outflow"
-        and body.purchase_invoice_id
-        and not body.supplier_id
-    ):
-        from src.invoices.models import PurchaseInvoice
-        invoice = await db.get(PurchaseInvoice, body.purchase_invoice_id)
-        if invoice:
-            invoice.paid_amount += body.amount
-            if invoice.paid_amount >= invoice.total_amount:
-                invoice.status = "paid"
-            elif invoice.paid_amount > 0:
-                invoice.status = "partial"
-
+    payment = await create_payment_service(db, body)
     await db.commit()
-    await db.refresh(payment)
     return payment
 
 
