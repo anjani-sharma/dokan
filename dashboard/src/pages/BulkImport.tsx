@@ -367,7 +367,12 @@ function ReviewModal({ job, suppliers, onClose, onPosted, onDiscarded }: ReviewP
   );
   const [amount, setAmount] = useState(String(e["amount"] ?? 0));
   const [paymentMode, setPaymentMode] = useState(String(e["payment_mode"] ?? "cash"));
-  const [direction, setDirection] = useState<"inflow" | "outflow">("outflow");
+  const [direction, setDirection] = useState<"inflow" | "outflow">(
+    (e["direction"] as "inflow" | "outflow") ?? "outflow"
+  );
+  const [paymentSupplierId, setPaymentSupplierId] = useState<number | "">(
+    typeof e["supplier_id"] === "number" ? (e["supplier_id"] as number) : ""
+  );
   const [txnRef, setTxnRef] = useState(String(e["transaction_ref"] ?? ""));
   const [note, setNote] = useState(String(e["note"] ?? ""));
 
@@ -403,6 +408,14 @@ function ReviewModal({ job, suppliers, onClose, onPosted, onDiscarded }: ReviewP
         await commitImport(job.id, body);
         toast.push({ kind: "success", title: "Invoice posted", body: `Job #${job.id}` });
       } else {
+        if (direction === "outflow" && !paymentSupplierId) {
+          toast.push({
+            kind: "error",
+            title: "Pick a vendor",
+            body: "Outflows must be booked against a supplier.",
+          });
+          return;
+        }
         const body = {
           payment_date: paymentDate,
           amount: Number(amount) || 0,
@@ -412,7 +425,7 @@ function ReviewModal({ job, suppliers, onClose, onPosted, onDiscarded }: ReviewP
           image_path: job.source_path,
           note: note.trim() || null,
           purchase_invoice_id: null,
-          supplier_id: null,
+          supplier_id: direction === "outflow" ? Number(paymentSupplierId) : null,
           customer_id: null,
         };
         await commitImport(job.id, body);
@@ -500,10 +513,12 @@ function ReviewModal({ job, suppliers, onClose, onPosted, onDiscarded }: ReviewP
             />
           ) : (
             <PaymentForm
+              suppliers={suppliers}
               paymentDate={paymentDate} setPaymentDate={setPaymentDate}
               amount={amount} setAmount={setAmount}
               paymentMode={paymentMode} setPaymentMode={setPaymentMode}
               direction={direction} setDirection={setDirection}
+              supplierId={paymentSupplierId} setSupplierId={setPaymentSupplierId}
               txnRef={txnRef} setTxnRef={setTxnRef}
               note={note} setNote={setNote}
             />
@@ -607,10 +622,12 @@ function InvoiceForm(p: InvoiceFormProps) {
 }
 
 interface PaymentFormProps {
+  suppliers: Supplier[];
   paymentDate: string; setPaymentDate: (s: string) => void;
   amount: string; setAmount: (s: string) => void;
   paymentMode: string; setPaymentMode: (s: string) => void;
   direction: "inflow" | "outflow"; setDirection: (s: "inflow" | "outflow") => void;
+  supplierId: number | ""; setSupplierId: (s: number | "") => void;
   txnRef: string; setTxnRef: (s: string) => void;
   note: string; setNote: (s: string) => void;
 }
@@ -647,6 +664,20 @@ function PaymentForm(p: PaymentFormProps) {
           </select>
         </Field>
       </div>
+      {p.direction === "outflow" && (
+        <Field label="Vendor">
+          <select
+            className="input"
+            value={p.supplierId === "" ? "" : String(p.supplierId)}
+            onChange={(e) => p.setSupplierId(e.target.value === "" ? "" : Number(e.target.value))}
+          >
+            <option value="">— pick vendor —</option>
+            {p.suppliers.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label="Transaction ref">
         <input className="input" value={p.txnRef}
           onChange={(e) => p.setTxnRef(e.target.value)} />

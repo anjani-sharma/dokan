@@ -246,4 +246,19 @@ async def _finish_payment(db, job: ImportJob, extracted: dict) -> None:
         job.dup_of_payment_id = dup.id
         return
 
+    # Default to outflow (the common case: shop paying a supplier). User can
+    # override in the review modal. Resolve a supplier from payee_name (OCR
+    # field) so the modal opens with the right party pre-selected; falls back
+    # to supplier_name in case a future OCR variant uses that key.
+    extracted.setdefault("direction", "outflow")
+    candidate_name = (
+        extracted.get("payee_name")
+        or extracted.get("supplier_name")
+        or ""
+    ).strip()
+    if candidate_name:
+        supplier_id = await resolve_supplier(db, candidate_name)
+        if supplier_id is not None:
+            extracted["supplier_id"] = supplier_id
+    job.extracted = extracted
     job.status = "needs_review"
