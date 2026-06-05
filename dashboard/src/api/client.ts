@@ -610,6 +610,15 @@ export const fetchSupplierLedger = (id: number): Promise<SupplierLedger> =>
 export const updateSupplier = (id: number, body: Partial<Pick<Supplier, "name" | "phone" | "address">>): Promise<Supplier> =>
   api.put(`/products/suppliers/${id}`, body).then(r => r.data);
 
+export interface MergeSupplierResult {
+  moved_invoices: number;
+  moved_payments: number;
+  moved_products: number;
+}
+
+export const mergeSupplier = (sourceId: number, targetId: number): Promise<MergeSupplierResult> =>
+  api.post(`/products/suppliers/${sourceId}/merge`, { into: targetId }).then(r => r.data);
+
 export const ocrInvoiceUpload = (file: File): Promise<OcrInvoiceResult> => {
   const fd = new FormData();
   fd.append("file", file);

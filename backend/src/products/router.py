@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import get_db, require_token
+from src.invoices.models import PurchaseInvoice
+from src.payments.models import Payment
 from src.products.models import Product, Supplier
 from src.products.schemas import (
     ProductCreate, ProductOut, ProductUpdate,
@@ -90,6 +93,69 @@ async def supplier_ledger(supplier_id: int, db: AsyncSession = Depends(get_db)):
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return await build_supplier_ledger(db, supplier)
+
+
+class MergeSupplierBody(BaseModel):
+    into: int
+
+
+class MergeSupplierResult(BaseModel):
+    moved_invoices: int
+    moved_payments: int
+    moved_products: int
+
+
+@router.post(
+    "/suppliers/{supplier_id}/merge",
+    response_model=MergeSupplierResult,
+    dependencies=[Depends(require_token)],
+)
+async def merge_supplier(
+    supplier_id: int,
+    body: MergeSupplierBody,
+    db: AsyncSession = Depends(get_db),
+):
+    """Move every invoice, payment, and product from `supplier_id` onto
+    `body.into`, then delete the source supplier. One-shot fix for the
+    "same vendor recorded twice" mess auto-create can leave behind.
+    """
+    if supplier_id == body.into:
+        raise HTTPException(status_code=400, detail="Cannot merge a supplier into itself")
+
+    source = await db.get(Supplier, supplier_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source supplier not found")
+    target = await db.get(Supplier, body.into)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Target supplier not found")
+
+    inv_result = await db.execute(
+        update(PurchaseInvoice)
+        .where(PurchaseInvoice.supplier_id == supplier_id)
+        .values(supplier_id=body.into)
+        .execution_options(synchronize_session=False)
+    )
+    pay_result = await db.execute(
+        update(Payment)
+        .where(Payment.supplier_id == supplier_id)
+        .values(supplier_id=body.into)
+        .execution_options(synchronize_session=False)
+    )
+    prod_result = await db.execute(
+        update(Product)
+        .where(Product.supplier_id == supplier_id)
+        .values(supplier_id=body.into)
+        .execution_options(synchronize_session=False)
+    )
+
+    await db.delete(source)
+    await db.commit()
+
+    return MergeSupplierResult(
+        moved_invoices=inv_result.rowcount,
+        moved_payments=pay_result.rowcount,
+        moved_products=prod_result.rowcount,
+    )
 
 
 # ── Products ───────────────────────────────────────────────────────────────

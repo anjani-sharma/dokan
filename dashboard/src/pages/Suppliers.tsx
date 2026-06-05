@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   fetchInvoices, fetchSupplierLedger, fetchSupplierSummaries, fmt,
-  Invoice, SupplierLedger, SupplierSummary, updateSupplier, upsertSupplier,
+  Invoice, mergeSupplier, SupplierLedger, SupplierSummary, updateSupplier, upsertSupplier,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import FormField from "../components/FormField";
@@ -17,6 +17,7 @@ export default function Suppliers() {
   const [selected, setSelected] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showBills, setShowBills] = useState(false);
+  const [mergingSource, setMergingSource] = useState<SupplierSummary | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -94,6 +95,7 @@ export default function Suppliers() {
                   key={s.id}
                   vendor={s}
                   onOpen={() => setSelected(s.id)}
+                  onMerge={() => setMergingSource(s)}
                 />
               ))}
             </tbody>
@@ -119,6 +121,29 @@ export default function Suppliers() {
       <Modal open={showBills} onClose={() => setShowBills(false)} title="Bills due across all vendors" wide>
         <BillsDuePanel onPickVendor={(id) => { setShowBills(false); setSelected(id); }} />
       </Modal>
+
+      {mergingSource && (
+        <Modal
+          open
+          onClose={() => setMergingSource(null)}
+          title={`Merge "${mergingSource.name}" into another vendor`}
+        >
+          <MergeSupplierForm
+            source={mergingSource}
+            allSuppliers={suppliers}
+            onCancel={() => setMergingSource(null)}
+            onMerged={(result) => {
+              setMergingSource(null);
+              toast.push({
+                kind: "success",
+                title: "Vendors merged",
+                body: `${result.moved_invoices} invoice(s), ${result.moved_payments} payment(s), ${result.moved_products} product(s) reassigned.`,
+              });
+              load();
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -130,8 +155,8 @@ export default function Suppliers() {
 // to open the full ledger modal.
 
 function VendorRow({
-  vendor, onOpen,
-}: { vendor: SupplierSummary; onOpen: () => void }) {
+  vendor, onOpen, onMerge,
+}: { vendor: SupplierSummary; onOpen: () => void; onMerge: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [ledger, setLedger] = useState<SupplierLedger | null>(null);
   const [loadingLedger, setLoadingLedger] = useState(false);
@@ -169,9 +194,17 @@ function VendorRow({
             <div className="detail-panel">
               <div className="filter-row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
                 <div className="bold" style={{ fontSize: 13 }}>Recent activity</div>
-                <button className="btn btn-primary btn-sm" onClick={onOpen}>
-                  View full ledger
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={(e) => { e.stopPropagation(); onMerge(); }}
+                  >
+                    Merge into…
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={onOpen}>
+                    View full ledger
+                  </button>
+                </div>
               </div>
               {loadingLedger ? (
                 <div className="text-muted">Loading…</div>
@@ -429,6 +462,65 @@ function SupplierDetail({ id, onClose, onChanged }: { id: number; onClose: () =>
 }
 
 // ── Create / edit forms ────────────────────────────────────────────────────
+
+function MergeSupplierForm({
+  source, allSuppliers, onCancel, onMerged,
+}: {
+  source: SupplierSummary;
+  allSuppliers: SupplierSummary[];
+  onCancel: () => void;
+  onMerged: (r: { moved_invoices: number; moved_payments: number; moved_products: number }) => void;
+}) {
+  const [targetId, setTargetId] = useState<number | "">("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const targets = allSuppliers.filter((s) => s.id !== source.id);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!targetId) { setError("Pick a target vendor."); return; }
+    if (!confirm(
+      `Move every invoice, payment, and product from "${source.name}" ` +
+      `onto the selected vendor, then delete "${source.name}". This cannot be undone.`,
+    )) return;
+    setBusy(true);
+    try {
+      const result = await mergeSupplier(source.id, Number(targetId));
+      onMerged(result);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Merge failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-grid">
+      <FormField label={`Move everything from "${source.name}" into…`}>
+        <select
+          className="form-input"
+          value={targetId === "" ? "" : String(targetId)}
+          onChange={(e) => setTargetId(e.target.value === "" ? "" : Number(e.target.value))}
+          required
+        >
+          <option value="">— pick target vendor —</option>
+          {targets.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </FormField>
+      {error && <div className="form-error">{error}</div>}
+      <div className="form-actions">
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? "Merging…" : "Merge"}
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function SupplierCreateForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState("");
