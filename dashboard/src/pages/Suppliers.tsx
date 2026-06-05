@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  fetchInvoices, fetchSuppliers, fetchSupplierLedger, fetchSupplierSummaries, fmt,
-  Invoice, mergeSupplier, Supplier, SupplierLedger, SupplierSummary,
+  deleteSupplier, fetchInvoices, fetchSuppliers, fetchSupplierLedger, fetchSupplierSummaries,
+  fmt, Invoice, mergeSupplier, Supplier, SupplierLedger, SupplierSummary,
   updateInvoice, updateSupplier, upsertSupplier,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
@@ -97,6 +97,20 @@ export default function Suppliers() {
                   vendor={s}
                   onOpen={() => setSelected(s.id)}
                   onMerge={() => setMergingSource(s)}
+                  onDelete={async () => {
+                    if (!confirm(
+                      `Delete "${s.name}"? This fails if the vendor still has any invoices, ` +
+                      `payments, or products — merge them first.`,
+                    )) return;
+                    try {
+                      await deleteSupplier(s.id);
+                      toast.push({ kind: "success", title: "Vendor deleted" });
+                      load();
+                    } catch (err) {
+                      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                      toast.push({ kind: "error", title: "Cannot delete", body: msg ?? "Delete failed." });
+                    }
+                  }}
                 />
               ))}
             </tbody>
@@ -156,8 +170,13 @@ export default function Suppliers() {
 // to open the full ledger modal.
 
 function VendorRow({
-  vendor, onOpen, onMerge,
-}: { vendor: SupplierSummary; onOpen: () => void; onMerge: () => void }) {
+  vendor, onOpen, onMerge, onDelete,
+}: {
+  vendor: SupplierSummary;
+  onOpen: () => void;
+  onMerge: () => void;
+  onDelete: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [ledger, setLedger] = useState<SupplierLedger | null>(null);
   const [loadingLedger, setLoadingLedger] = useState(false);
@@ -196,6 +215,12 @@ function VendorRow({
               <div className="filter-row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
                 <div className="bold" style={{ fontSize: 13 }}>Recent activity</div>
                 <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="btn btn-ghost btn-sm text-red"
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  >
+                    Delete
+                  </button>
                   <button
                     className="btn btn-secondary btn-sm"
                     onClick={(e) => { e.stopPropagation(); onMerge(); }}

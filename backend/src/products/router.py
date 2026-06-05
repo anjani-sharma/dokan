@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import get_db, require_token
@@ -93,6 +93,48 @@ async def supplier_ledger(supplier_id: int, db: AsyncSession = Depends(get_db)):
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return await build_supplier_ledger(db, supplier)
+
+
+@router.delete("/suppliers/{supplier_id}", status_code=204, dependencies=[Depends(require_token)])
+async def delete_supplier(supplier_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a supplier — refuses if any invoice, payment, or product
+    still references it. Use POST /suppliers/{id}/merge first to migrate
+    the FKs onto a different supplier.
+    """
+    supplier = await db.get(Supplier, supplier_id)
+    if supplier is None:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    inv_count = await db.scalar(
+        select(func.count()).select_from(PurchaseInvoice)
+        .where(PurchaseInvoice.supplier_id == supplier_id)
+    )
+    pay_count = await db.scalar(
+        select(func.count()).select_from(Payment)
+        .where(Payment.supplier_id == supplier_id)
+    )
+    prod_count = await db.scalar(
+        select(func.count()).select_from(Product)
+        .where(Product.supplier_id == supplier_id)
+    )
+    blockers = []
+    if inv_count:
+        blockers.append(f"{inv_count} invoice(s)")
+    if pay_count:
+        blockers.append(f"{pay_count} payment(s)")
+    if prod_count:
+        blockers.append(f"{prod_count} product(s)")
+    if blockers:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Supplier still has {', '.join(blockers)}. "
+                "Merge into another supplier first, or delete/reassign those rows."
+            ),
+        )
+
+    await db.delete(supplier)
+    await db.commit()
 
 
 class MergeSupplierBody(BaseModel):

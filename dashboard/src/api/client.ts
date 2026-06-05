@@ -619,6 +619,9 @@ export interface MergeSupplierResult {
 export const mergeSupplier = (sourceId: number, targetId: number): Promise<MergeSupplierResult> =>
   api.post(`/products/suppliers/${sourceId}/merge`, { into: targetId }).then(r => r.data);
 
+export const deleteSupplier = (id: number): Promise<void> =>
+  api.delete(`/products/suppliers/${id}`).then(() => undefined);
+
 export const ocrInvoiceUpload = (file: File): Promise<OcrInvoiceResult> => {
   const fd = new FormData();
   fd.append("file", file);
