@@ -1,10 +1,11 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import get_db, require_token
+from src.imports.models import ImportJob
 from src.payments.models import Payment
 from src.payments.schemas import PaymentCreate, PaymentOut
 from src.payments.service import create_payment as create_payment_service
@@ -101,5 +102,17 @@ async def delete_payment(payment_id: int, db: AsyncSession = Depends(get_db)):
             elif invoice.paid_amount < invoice.total_amount:
                 invoice.status = "partial"
 
+    # Clear import_jobs FKs pointing at this payment so the delete isn't
+    # blocked by the dup/posted references the bulk-import worker writes.
+    await db.execute(
+        update(ImportJob)
+        .where(ImportJob.dup_of_payment_id == payment_id)
+        .values(dup_of_payment_id=None)
+    )
+    await db.execute(
+        update(ImportJob)
+        .where(ImportJob.posted_payment_id == payment_id)
+        .values(posted_payment_id=None)
+    )
     await db.delete(payment)
     await db.commit()

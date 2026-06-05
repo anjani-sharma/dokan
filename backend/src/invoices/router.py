@@ -4,7 +4,7 @@ import sys
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +13,7 @@ from src.invoices.models import PurchaseInvoice, PurchaseInvoiceItem
 from src.invoices.schemas import (
     InvoiceCreate, InvoiceItemCreate, InvoiceOut, InvoiceUpdate,
 )
+from src.imports.models import ImportJob
 from src.invoices.service import DuplicateInvoiceNumber, create_invoice as create_invoice_service
 from src.products.service import upsert_product_by_name
 from src.settings import settings
@@ -112,7 +113,14 @@ async def update_invoice(invoice_id: int, body: InvoiceUpdate, db: AsyncSession 
 
 @router.delete("/{invoice_id}", status_code=204, dependencies=[Depends(require_token)])
 async def delete_invoice(invoice_id: int, db: AsyncSession = Depends(get_db)):
-    """Delete an invoice and reverse the stock movements its items caused."""
+    """Delete an invoice and reverse the stock movements its items caused.
+
+    Also clears any `import_jobs` FK references to this invoice
+    (`dup_of_invoice_id`, `posted_invoice_id`) so the FK constraint
+    doesn't block the delete — the bulk-import worker writes those when
+    it flags a duplicate or after a successful commit, and the audit
+    trail of "this job was a dup of X" loses meaning once X is gone.
+    """
     result = await db.execute(
         select(PurchaseInvoice)
         .options(selectinload(PurchaseInvoice.items))
@@ -130,6 +138,16 @@ async def delete_invoice(invoice_id: int, db: AsyncSession = Depends(get_db)):
                 reference_id=invoice.id,
                 reference_type="purchase_invoice_delete",
             )
+    await db.execute(
+        update(ImportJob)
+        .where(ImportJob.dup_of_invoice_id == invoice_id)
+        .values(dup_of_invoice_id=None)
+    )
+    await db.execute(
+        update(ImportJob)
+        .where(ImportJob.posted_invoice_id == invoice_id)
+        .values(posted_invoice_id=None)
+    )
     await db.delete(invoice)
     await db.commit()
 
