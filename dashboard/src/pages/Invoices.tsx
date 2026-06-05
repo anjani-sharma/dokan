@@ -5,8 +5,8 @@ import InvoiceForm from "../components/InvoiceForm";
 import FormField from "../components/FormField";
 import ProductPicker from "../components/ProductPicker";
 import {
-  addInvoiceItem, deleteInvoice, deleteInvoiceItem, fetchInvoices,
-  fmt, Invoice, InvoiceItemCreate, updateInvoice, updateInvoiceItem,
+  addInvoiceItem, deleteInvoice, deleteInvoiceItem, fetchDuplicateInvoiceClusters,
+  fetchInvoices, fmt, Invoice, InvoiceItemCreate, updateInvoice, updateInvoiceItem,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 
@@ -19,6 +19,38 @@ export default function Invoices() {
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [dupClusters, setDupClusters] = useState<Invoice[][] | null>(null);
+  const [dupLoading, setDupLoading] = useState(false);
+
+  const toast = useToast();
+
+  const openDuplicatesModal = async () => {
+    setDupLoading(true);
+    try {
+      const clusters = await fetchDuplicateInvoiceClusters();
+      setDupClusters(clusters);
+    } catch (e: unknown) {
+      const msg = (e as { message?: string })?.message ?? "Could not load duplicates";
+      toast.push({ kind: "error", title: "Could not load duplicates", body: msg });
+    } finally {
+      setDupLoading(false);
+    }
+  };
+
+  const deleteFromCluster = async (id: number) => {
+    if (!confirm("Delete this invoice? Its stock movements will be reversed.")) return;
+    try {
+      await deleteInvoice(id);
+      setDupClusters(prev =>
+        prev?.map(g => g.filter(i => i.id !== id)).filter(g => g.length > 1) ?? null
+      );
+      load(filter);
+      toast.push({ kind: "success", title: `Invoice #${id} deleted` });
+    } catch (e: unknown) {
+      const msg = (e as { message?: string })?.message ?? "Delete failed";
+      toast.push({ kind: "error", title: "Delete failed", body: msg });
+    }
+  };
 
   const load = (f: string) => {
     setLoading(true);
@@ -56,9 +88,64 @@ export default function Invoices() {
               </button>
             ))}
           </div>
+          <button className="btn btn-secondary" onClick={openDuplicatesModal} disabled={dupLoading}>
+            {dupLoading ? "Scanning…" : "Find duplicates"}
+          </button>
           <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ New invoice</button>
         </div>
       </div>
+
+      {dupClusters !== null && (
+        <Modal open onClose={() => setDupClusters(null)} title="Duplicate invoices" wide>
+          {dupClusters.length === 0 ? (
+            <div style={{ padding: 16 }}>
+              No duplicates found — every (supplier, date, total) combination is unique.
+            </div>
+          ) : (
+            <div style={{ maxHeight: 600, overflowY: "auto" }}>
+              <div style={{ marginBottom: 12, fontSize: 13, color: "#555" }}>
+                {dupClusters.length} cluster{dupClusters.length === 1 ? "" : "s"} of invoices share
+                the same supplier, date, and total. Keep one row per cluster, delete the rest —
+                stock movements are reversed automatically.
+              </div>
+              {dupClusters.map((group, gi) => (
+                <div key={gi} style={{ border: "1px solid #ddd", borderRadius: 6, padding: 12, marginBottom: 12 }}>
+                  <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 500 }}>
+                    {group[0].invoice_date} · {fmt(group[0].total_amount)} · supplier #{group[0].supplier_id}
+                  </div>
+                  <table className="data-table" style={{ fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th>Invoice #</th>
+                        <th>Items</th>
+                        <th style={{ textAlign: "right" }}>Total</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.map(inv => (
+                        <tr key={inv.id}>
+                          <td>{inv.invoice_number}</td>
+                          <td>{inv.items?.length ?? 0}</td>
+                          <td style={{ textAlign: "right" }}>{fmt(inv.total_amount)}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              className="btn btn-small btn-secondary"
+                              onClick={() => deleteFromCluster(inv.id)}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Record a purchase invoice" wide>
         <InvoiceForm

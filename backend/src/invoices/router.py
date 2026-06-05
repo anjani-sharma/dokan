@@ -39,6 +39,31 @@ async def list_invoices(
     return result.scalars().all()
 
 
+@router.get("/duplicates", response_model=list[list[InvoiceOut]])
+async def find_duplicate_invoices(db: AsyncSession = Depends(get_db)):
+    """Group existing invoices by (supplier_id, invoice_date, rounded total).
+    Returns each cluster with more than one row — that's the dedup signal
+    the worker uses for new uploads, applied retroactively so the user can
+    inspect and delete the extras.
+    """
+    result = await db.execute(
+        select(PurchaseInvoice)
+        .options(selectinload(PurchaseInvoice.items))
+        .order_by(PurchaseInvoice.invoice_date.desc(), PurchaseInvoice.id.desc())
+    )
+    invoices = list(result.scalars().all())
+
+    # Bucket by (supplier_id, invoice_date, ₹-rounded total). Single-tenant
+    # so a Python-side group is fine — invoice count is in the thousands at
+    # most.
+    buckets: dict[tuple[int, str, int], list[PurchaseInvoice]] = {}
+    for inv in invoices:
+        key = (inv.supplier_id, inv.invoice_date.isoformat(), round(float(inv.total_amount)))
+        buckets.setdefault(key, []).append(inv)
+
+    return [group for group in buckets.values() if len(group) > 1]
+
+
 @router.post("", response_model=InvoiceOut, status_code=201, dependencies=[Depends(require_token)])
 async def create_invoice(body: InvoiceCreate, db: AsyncSession = Depends(get_db)):
     try:

@@ -119,8 +119,19 @@ async def find_duplicate_invoice(
     phash: str | None,
     fingerprint: str | None,
     total: Decimal | float | int,
+    *,
+    supplier_id: int | None = None,
+    invoice_date: date | None = None,
 ) -> PurchaseInvoice | None:
-    """Return an existing invoice that matches by phash or fingerprint, else None."""
+    """Return an existing invoice that matches by phash, fingerprint, or the
+    (supplier, date, total) tuple — else None.
+
+    The supplier/date/total layer catches duplicates the item-sensitive
+    fingerprint misses when OCR transcribes line items differently across
+    uploads. A real shop almost never books two distinct invoices for the
+    exact same supplier, day, and ₹ amount — so a hit here is reliably a
+    duplicate, even with different `invoice_number` strings.
+    """
     if phash:
         # Layer 1: exact phash match — cheap, indexed, catches byte-identical re-uploads.
         r = await db.execute(
@@ -151,6 +162,20 @@ async def find_duplicate_invoice(
         r = await db.execute(
             select(PurchaseInvoice).where(
                 PurchaseInvoice.content_fingerprint == fingerprint
+            )
+        )
+        for cand in r.scalars().all():
+            if _within_pct(float(cand.total_amount), float(total), TOTAL_TOLERANCE_PCT):
+                return cand
+
+    # Layer 4: (supplier, date, total). Item-list-independent, so OCR variance
+    # on line items can't hide a duplicate. ±1% on total catches a single
+    # paise misread.
+    if supplier_id is not None and invoice_date is not None:
+        r = await db.execute(
+            select(PurchaseInvoice).where(
+                PurchaseInvoice.supplier_id == supplier_id,
+                PurchaseInvoice.invoice_date == invoice_date,
             )
         )
         for cand in r.scalars().all():

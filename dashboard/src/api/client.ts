@@ -535,6 +535,11 @@ export const fetchSuppliers = (): Promise<Supplier[]> =>
 export const fetchInvoices = (status?: string): Promise<Invoice[]> =>
   api.get("/invoices", { params: status ? { status } : {} }).then(r => r.data.map(coerceInvoice));
 
+export const fetchDuplicateInvoiceClusters = (): Promise<Invoice[][]> =>
+  api.get("/invoices/duplicates").then(r =>
+    (r.data as Invoice[][]).map(group => group.map(coerceInvoice))
+  );
+
 export const fetchPayments = (params?: {
   direction?: string;
   payment_mode?: string;

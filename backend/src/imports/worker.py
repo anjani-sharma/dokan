@@ -218,7 +218,10 @@ async def _finish_invoice(db, job: ImportJob, extracted: dict) -> None:
     fp = compute_invoice_fingerprint(supplier_id, invoice_date, total, items)
     job.content_fingerprint = fp
 
-    dup = await find_duplicate_invoice(db, job.image_phash, fp, total)
+    dup = await find_duplicate_invoice(
+        db, job.image_phash, fp, total,
+        supplier_id=supplier_id, invoice_date=invoice_date,
+    )
     if dup is not None:
         job.status = "duplicate"
         job.dup_of_invoice_id = dup.id
